@@ -14,4 +14,6 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: postgres://postgres:postgres@localhost:5432/maths_exam 
+        fromDatabase:
+          name: maths-exam-db
+          property: connectionString 
