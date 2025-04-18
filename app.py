@@ -1,28 +1,16 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from werkzeug.security import generate_password_hash, check_password_hash
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
-import requests
-from dotenv import load_dotenv
-from itsdangerous import URLSafeTimedSerializer
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import random
-import re
 import logging
 import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
@@ -34,11 +22,6 @@ if database_url.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USERNAME'] = os.getenv('EMAIL_USER')
-app.config['MAIL_PASSWORD'] = os.getenv('EMAIL_PASSWORD')
 
 # Add custom Jinja2 filter for JSON handling
 @app.template_filter('fromjson')
@@ -49,11 +32,6 @@ def fromjson_filter(value):
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-login_manager.login_message = 'Please log in to access this page.'
-login_manager.login_message_category = 'info'
 
 # Error handler for 500 errors
 @app.errorhandler(500)
@@ -68,150 +46,12 @@ def not_found_error(error):
     logger.error(f"404 Error: {str(error)}")
     return render_template('404.html'), 404
 
-# Database Models
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128))
-    email_verified = db.Column(db.Boolean, default=False)
-    email_verification_token = db.Column(db.String(100), unique=True)
-    email_verification_sent_at = db.Column(db.DateTime)
-    tests = db.relationship('Test', backref='user', lazy=True)
-
-class Test(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    score = db.Column(db.Float)
-    questions = db.Column(db.Text)  # JSON string of questions
-    answers = db.Column(db.Text)    # JSON string of user answers
-    feedback = db.Column(db.Text)   # JSON string of feedback
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
 # Routes
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists', 'error')
-            return redirect(url_for('signup'))
-        
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered', 'error')
-            return redirect(url_for('signup'))
-        
-        user = User(username=username, email=email)
-        user.password_hash = generate_password_hash(password)
-        db.session.add(user)
-        db.session.commit()
-        
-        # Send verification email
-        if send_verification_email(user):
-            flash('Registration successful! Please check your email to verify your account.', 'success')
-        else:
-            flash('Registration successful, but we could not send the verification email. Please contact support.', 'warning')
-        
-        return redirect(url_for('login'))
-    
-    return render_template('signup.html')
-
-@app.route('/verify-email/<token>')
-def verify_email(token):
-    try:
-        email = URLSafeTimedSerializer(app.config['SECRET_KEY']).loads(
-            token, salt='email-verification', max_age=86400  # 24 hours
-        )
-        user = User.query.filter_by(email=email).first()
-        
-        if user:
-            if user.email_verified:
-                flash('Your email is already verified. You can now login.', 'info')
-                return redirect(url_for('login'))
-            
-            user.email_verified = True
-            user.email_verification_token = None
-            db.session.commit()
-            
-            flash('Your email has been verified! You can now login.', 'success')
-            return redirect(url_for('login'))
-        else:
-            flash('Invalid verification link.', 'error')
-            return redirect(url_for('signup'))
-            
-    except Exception as e:
-        flash('The verification link is invalid or has expired.', 'error')
-        return redirect(url_for('signup'))
-
-@app.route('/resend-verification', methods=['POST'])
-def resend_verification():
-    email = request.form.get('email')
-    user = User.query.filter_by(email=email).first()
-    
-    if user:
-        if user.email_verified:
-            flash('Your email is already verified.', 'info')
-            return redirect(url_for('login'))
-        
-        # Check if we should allow resending (e.g., not too frequent)
-        if user.email_verification_sent_at:
-            time_since_last = datetime.utcnow() - user.email_verification_sent_at
-            if time_since_last < timedelta(minutes=5):
-                flash('Please wait a few minutes before requesting another verification email.', 'warning')
-                return redirect(url_for('login'))
-        
-        if send_verification_email(user):
-            flash('Verification email has been resent. Please check your inbox.', 'success')
-        else:
-            flash('Could not send verification email. Please try again later.', 'error')
-    else:
-        flash('Email not found.', 'error')
-    
-    return redirect(url_for('login'))
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        password = request.form.get('password')
-        user = User.query.filter_by(email=email).first()
-        
-        if user and check_password_hash(user.password_hash, password):
-            if not user.email_verified:
-                flash('Please verify your email address before logging in. Check your inbox for the verification link.', 'warning')
-                return render_template('login.html', email=email, show_resend=True)
-            
-            login_user(user)
-            return redirect(url_for('dashboard'))
-        
-        flash('Invalid email or password', 'error')
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    # Redirect to home page
-    return redirect(url_for('index'))
-
 @app.route('/start_test')
-@login_required
 def start_test():
     questions = generate_questions()
     # Store questions in session
@@ -310,7 +150,6 @@ def submit_test():
         return jsonify({'error': f'An error occurred: {str(e)}'}), 500
 
 @app.route('/results')
-@login_required
 def results():
     # Get test results from session
     test_results = session.get('test_results')
@@ -325,7 +164,6 @@ def results():
     return render_template('results.html', results=test_results)
 
 @app.route('/view_test_result', methods=['POST'])
-@login_required
 def view_test_result():
     # Get the test index from the form
     test_index = request.form.get('test_index')
@@ -335,25 +173,17 @@ def view_test_result():
     
     # Get test history from session
     test_history = session.get('test_history', [])
-    if not test_history:
-        flash('No test history found', 'error')
-        return redirect(url_for('index'))
-    
     try:
-        # Convert to integer and get the test result
         test_index = int(test_index)
-        if test_index < 0 or test_index >= len(test_history):
+        if 0 <= test_index < len(test_history):
+            session['test_results'] = test_history[test_index]
+            return redirect(url_for('results'))
+        else:
             flash('Invalid test index', 'error')
-            return redirect(url_for('index'))
-        
-        # Get the test result and set it as the current test result
-        test_result = test_history[test_index]
-        session['test_results'] = test_result
-        
-        return redirect(url_for('results'))
     except ValueError:
         flash('Invalid test index format', 'error')
-        return redirect(url_for('index'))
+    
+    return redirect(url_for('index'))
 
 def generate_questions():
     """Generate a set of diverse math questions for Year 7 level."""
@@ -439,69 +269,6 @@ def generate_questions():
         question["id"] = i + 1
     
     return selected_questions
-
-def evaluate_test(questions, answers):
-    score = 0
-    feedback = []
-    
-    for q in questions:
-        q_id = str(q['id'])
-        user_answer = answers.get(f'q_{q_id}')
-        is_correct = user_answer == q['correct']
-        
-        if is_correct:
-            score += 1
-        
-        feedback.append({
-            'question': q['question'],
-            'user_answer': user_answer,
-            'correct_answer': q['correct'],
-            'explanation': q['explanation'],
-            'is_correct': is_correct
-        })
-    
-    return (score / len(questions)) * 100, feedback
-
-def send_verification_email(user):
-    """Send verification email to user."""
-    token = URLSafeTimedSerializer(app.config['SECRET_KEY']).dumps(user.email, salt='email-verification')
-    user.email_verification_token = token
-    user.email_verification_sent_at = datetime.utcnow()
-    db.session.commit()
-
-    verification_url = url_for('verify_email', token=token, _external=True)
-    
-    msg = MIMEMultipart()
-    msg['From'] = app.config['MAIL_USERNAME']
-    msg['To'] = user.email
-    msg['Subject'] = 'Verify your email address'
-    
-    body = f"""
-    Hello {user.username},
-    
-    Please verify your email address by clicking the link below:
-    {verification_url}
-    
-    This link will expire in 24 hours.
-    
-    If you did not create an account, please ignore this email.
-    
-    Best regards,
-    Your Maths Test Team
-    """
-    
-    msg.attach(MIMEText(body, 'plain'))
-    
-    try:
-        server = smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT'])
-        server.starttls()
-        server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"Error sending email: {str(e)}")
-        return False
 
 if __name__ == '__main__':
     with app.app_context():
