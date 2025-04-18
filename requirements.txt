@@ -5,4 +5,9 @@ Flask-Migrate==4.0.4
 gunicorn==20.1.0
 python-dotenv==1.0.0
 Werkzeug==2.2.3
-SQLAlchemy==1.4.41 
+SQLAlchemy==1.4.41
+psycopg2-binary==2.9.5
+alembic==1.10.3
+requests==2.31.0
+email-validator==2.0.0
+Flask-WTF==1.1.1 
