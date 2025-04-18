@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Maths Test{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Math Test</h2>
+    <form id="testForm" method="POST">
+        {% for question in questions %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Question {{ loop.index }}</h5>
+                <p class="card-text">{{ question.question }}</p>
+                <div class="options">
+                    {% for option in question.options %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="q_{{ question.id }}" 
+                               id="q{{ question.id }}_{{ loop.index }}" value="{{ option }}">
+                        <label class="form-check-label" for="q{{ question.id }}_{{ loop.index }}">
+                            {{ option }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        <div class="text-center mt-4">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-paper-plane"></i> Submit Test
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+document.getElementById('testForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    // Collect all answers
+    const answers = {};
+    const questions = document.querySelectorAll('.card');
+    questions.forEach((question, index) => {
+        const questionId = question.querySelector('input[type="radio"]').name.split('_')[1];
+        const selectedOption = question.querySelector('input[type="radio"]:checked');
+        answers[`q_${questionId}`] = selectedOption ? selectedOption.value : null;
+    });
+
+    // Submit answers to server
+    fetch('/submit_test', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ answers: answers })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert(data.error);
+        } else {
+            // Store results in session storage
+            sessionStorage.setItem('testResults', JSON.stringify(data));
+            // Redirect to results page
+            window.location.href = '/results';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while submitting the test.');
+    });
+});
+</script>
+{% endblock %} 

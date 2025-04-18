@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Test Results{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Test Results</h2>
+    
+    {% if results %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <h3 class="card-title">Summary</h3>
+                <p class="card-text">You scored {{ results.score }}/{{ results.total }} questions correctly.</p>
+                <div class="progress mb-3">
+                    <div class="progress-bar {% if results.score/results.total >= 0.7 %}bg-success{% elif results.score/results.total >= 0.5 %}bg-warning{% else %}bg-danger{% endif %}" 
+                         role="progressbar" 
+                         style="width: {{ (results.score/results.total * 100)|round }}%"
+                         aria-valuenow="{{ (results.score/results.total * 100)|round }}" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">
+                        {{ (results.score/results.total * 100)|round }}%
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3>Question Details</h3>
+        {% for question in results.questions %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Question {{ loop.index }}</h5>
+                    <p class="card-text">{{ question.text }}</p>
+                    
+                    <div class="alert {% if question.correct %}alert-success{% else %}alert-danger{% endif %}">
+                        <strong>Your answer:</strong> {{ question.user_answer }}
+                        {% if not question.correct %}
+                            <br>
+                            <strong>Correct answer:</strong> {{ question.correct_answer }}
+                        {% endif %}
+                    </div>
+                    
+                    {% if question.explanation %}
+                        <div class="explanation mt-3">
+                            <h6>Explanation:</h6>
+                            <p>{{ question.explanation }}</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+        
+        <div class="d-flex justify-content-between mt-4 mb-5">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                <i class="fas fa-home"></i> Back to Home
+            </a>
+            <div>
+                <a href="{{ url_for('start_test') }}" class="btn btn-primary">
+                    <i class="fas fa-redo"></i> Start New Test
+                </a>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-warning">
+            No test results found. Please take a test first.
+        </div>
+        <div class="text-center mt-4">
+            <a href="{{ url_for('start_test') }}" class="btn btn-primary">
+                <i class="fas fa-play-circle"></i> Start Test
+            </a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %} 
