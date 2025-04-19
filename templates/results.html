@@ -3,71 +3,49 @@
 {% block title %}Test Results{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <h2>Test Results</h2>
+<div class="container mt-5">
+    <h2 class="text-center mb-4">Test Results</h2>
     
-    {% if results %}
-        <div class="card mb-4">
-            <div class="card-body">
-                <h3 class="card-title">Summary</h3>
-                <p class="card-text">You scored {{ results.score }}/{{ results.total }} questions correctly.</p>
-                <div class="progress mb-3">
-                    <div class="progress-bar {% if results.score/results.total >= 0.7 %}bg-success{% elif results.score/results.total >= 0.5 %}bg-warning{% else %}bg-danger{% endif %}" 
-                         role="progressbar" 
-                         style="width: {{ (results.score/results.total * 100)|round }}%"
-                         aria-valuenow="{{ (results.score/results.total * 100)|round }}" 
-                         aria-valuemin="0" 
-                         aria-valuemax="100">
-                        {{ (results.score/results.total * 100)|round }}%
-                    </div>
-                </div>
+    <div class="card">
+        <div class="card-body">
+            <h3 class="card-title text-center">Your Score</h3>
+            <div class="text-center mb-4">
+                <h1 class="display-4">{{ results.score }}/{{ results.total_questions }}</h1>
+                <h3>{{ "%.1f"|format(results.percentage) }}%</h3>
             </div>
-        </div>
 
-        <h3>Question Details</h3>
-        {% for question in results.questions %}
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h5 class="card-title">Question {{ loop.index }}</h5>
-                    <p class="card-text">{{ question.text }}</p>
-                    
-                    <div class="alert {% if question.correct %}alert-success{% else %}alert-danger{% endif %}">
-                        <strong>Your answer:</strong> {{ question.user_answer }}
-                        {% if not question.correct %}
-                            <br>
-                            <strong>Correct answer:</strong> {{ question.correct_answer }}
-                        {% endif %}
-                    </div>
-                    
-                    {% if question.explanation %}
-                        <div class="explanation mt-3">
-                            <h6>Explanation:</h6>
-                            <p>{{ question.explanation }}</p>
-                        </div>
-                    {% endif %}
+            <div class="progress mb-4">
+                <div class="progress-bar {% if results.percentage >= 80 %}bg-success{% elif results.percentage >= 60 %}bg-warning{% else %}bg-danger{% endif %}" 
+                     role="progressbar" 
+                     style="width: {{ results.percentage }}%" 
+                     aria-valuenow="{{ results.percentage }}" 
+                     aria-valuemin="0" 
+                     aria-valuemax="100">
                 </div>
             </div>
-        {% endfor %}
-        
-        <div class="d-flex justify-content-between mt-4 mb-5">
-            <a href="{{ url_for('index') }}" class="btn btn-secondary">
-                <i class="fas fa-home"></i> Back to Home
-            </a>
-            <div>
-                <a href="{{ url_for('start_test') }}" class="btn btn-primary">
-                    <i class="fas fa-redo"></i> Start New Test
-                </a>
+
+            <h4 class="mb-3">Question Review</h4>
+            <div class="list-group">
+                {% for question in results.questions %}
+                <div class="list-group-item">
+                    <h5 class="mb-2">Question {{ loop.index }}</h5>
+                    <p class="mb-2">{{ question.question }}</p>
+                    <p class="mb-1"><strong>Your answer:</strong> {{ results.answers.get(question.id|string, 'Not answered') }}</p>
+                    <p class="mb-1"><strong>Correct answer:</strong> {{ question.correct_answer }}</p>
+                    {% if results.answers.get(question.id|string) == question.correct_answer %}
+                        <span class="badge bg-success">Correct</span>
+                    {% else %}
+                        <span class="badge bg-danger">Incorrect</span>
+                    {% endif %}
+                    <p class="mt-2"><small class="text-muted">{{ question.explanation }}</small></p>
+                </div>
+                {% endfor %}
             </div>
         </div>
-    {% else %}
-        <div class="alert alert-warning">
-            No test results found. Please take a test first.
-        </div>
-        <div class="text-center mt-4">
-            <a href="{{ url_for('start_test') }}" class="btn btn-primary">
-                <i class="fas fa-play-circle"></i> Start Test
-            </a>
-        </div>
-    {% endif %}
+    </div>
+
+    <div class="text-center mt-4">
+        <a href="{{ url_for('start_test') }}" class="btn btn-primary">Start New Test</a>
+    </div>
 </div>
 {% endblock %} 
