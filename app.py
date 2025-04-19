@@ -46,17 +46,17 @@ if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# DeepSeek API configuration
-DEEPSEEK_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-DEEPSEEK_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# OpenRouter API configuration
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Debug logging for API key
-if DEEPSEEK_API_KEY:
+if OPENROUTER_API_KEY:
     logger.info("OpenRouter API key found in environment variables")
     # Log first 4 characters and last 4 characters of the key for security
-    masked_key = DEEPSEEK_API_KEY[:4] + "..." + DEEPSEEK_API_KEY[-4:]
+    masked_key = OPENROUTER_API_KEY[:4] + "..." + OPENROUTER_API_KEY[-4:]
     logger.info(f"API key (masked): {masked_key}")
-    logger.info(f"API key length: {len(DEEPSEEK_API_KEY)}")
+    logger.info(f"API key length: {len(OPENROUTER_API_KEY)}")
 else:
     logger.warning("OpenRouter API key not found in environment variables")
     logger.warning("Please set OPENROUTER_API_KEY environment variable")
@@ -238,156 +238,128 @@ def view_test_result():
 
 def generate_questions():
     try:
-        # Check if API key is configured
-        if not DEEPSEEK_API_KEY:
-            logger.warning("OpenRouter API key not found. Using predefined questions.")
-            return get_fallback_questions()
-
-        logger.info("Starting question generation process...")
-        # Get all questions from the database
-        all_questions = Question.query.all()
-        logger.info(f"Current number of questions in database: {len(all_questions)}")
+        # Check if we have enough questions in the database
+        existing_questions = Question.query.all()
+        logger.info(f"Current number of questions in database: {len(existing_questions)}")
         
-        # If we don't have enough questions, try to generate more using OpenRouter
-        if len(all_questions) < 20:
+        if len(existing_questions) >= 10:
+            # Get all question IDs that have been used in any previous tests
+            used_question_ids = set()
+            test_history = load_test_history()
+            for user_tests in test_history.values():
+                for test in user_tests:
+                    used_question_ids.update(test.get('questions_used', []))
+            
+            # Filter out questions that have been used
+            available_questions = [q for q in existing_questions if q.id not in used_question_ids]
+            logger.info(f"Number of unused questions available: {len(available_questions)}")
+            
+            if len(available_questions) >= 10:
+                # Select 10 random questions from available ones
+                selected_questions = random.sample(available_questions, 10)
+                return [{
+                    'id': q.id,
+                    'question': q.question_text,
+                    'options': q.options,
+                    'correct_answer': q.correct_answer,
+                    'difficulty': q.difficulty,
+                    'explanation': q.explanation
+                } for q in selected_questions]
+        
+        # If we need more questions, generate them using OpenRouter
+        if not OPENROUTER_API_KEY:
+            logger.warning("No OpenRouter API key available, using fallback questions")
+            return get_fallback_questions()
+        
+        logger.info("Generating new questions using OpenRouter API")
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "HTTP-Referer": "https://github.com/waliasumit/MathsMate",
+            "X-Title": "Maths Exam App"
+        }
+        
+        data = {
+            "model": "deepseek/deepseek-chat-v3-0324:free",
+            "messages": [
+                {"role": "system", "content": "You are an experienced math teacher creating challenging and engaging questions."},
+                {"role": "user", "content": """Generate 20 math questions for Year 9 students. Each question should be in JSON format with:
+                - question: The math problem
+                - options: Array of 4 possible answers
+                - correct_answer: The correct answer
+                - difficulty: easy/medium/hard
+                - explanation: Step-by-step solution
+                Return only the JSON array, no other text."""}
+            ]
+        }
+        
+        logger.debug(f"Making API request to: {OPENROUTER_API_URL}")
+        logger.debug(f"Request headers: {headers}")
+        logger.debug(f"Request data: {data}")
+        
+        response = requests.post(OPENROUTER_API_URL, headers=headers, json=data)
+        logger.debug(f"API response status code: {response.status_code}")
+        logger.debug(f"API response headers: {response.headers}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.debug(f"Raw API response: {result}")
+            
             try:
-                logger.info("Attempting to generate new questions using OpenRouter API...")
-                # Generate new questions
-                prompt = """
-                Generate 20 math questions for Year 9 students with the following requirements:
-                1. Mix of different question types:
-                   - Algebra (solving equations, expressions)
-                   - Word problems (real-world applications)
-                   - Number patterns and sequences
-                   - Probability and statistics
-                   - Geometry (area, perimeter, angles)
-                2. Difficulty levels:
-                   - 7 easy questions (basic concepts)
-                   - 7 medium questions (application of concepts)
-                   - 6 challenging questions (complex problems)
-                3. Each question should have 4 options
-                4. Include detailed explanations showing the step-by-step solution
-                5. Format the response as a JSON array
-                """
-                
-                # Make API request to OpenRouter
-                headers = {
-                    "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "http://localhost:5000",
-                    "X-Title": "Maths Exam App"
-                }
-                
-                data = {
-                    "model": "deepseek/deepseek-chat-v3-0324:free",
-                    "messages": [
-                        {"role": "system", "content": "You are an experienced math teacher creating challenging and engaging questions."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.7
-                }
-
-                logger.info("Sending request to OpenRouter API...")
-                logger.debug(f"Request headers: {headers}")
-                logger.debug(f"Request data: {data}")
-                
-                response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=10)
-                
-                logger.info(f"OpenRouter API response status code: {response.status_code}")
-                logger.debug(f"Response headers: {dict(response.headers)}")
-                
-                if response.status_code == 402:
-                    logger.error("OpenRouter API returned Payment Required error. Please check your API key and credits.")
-                    logger.error(f"Response body: {response.text}")
-                    return get_fallback_questions()
-                elif response.status_code != 200:
-                    logger.error(f"OpenRouter API returned status code {response.status_code}")
-                    logger.error(f"Response body: {response.text}")
-                    return get_fallback_questions()
-                
-                # Parse the response
-                result = response.json()
-                logger.debug(f"Raw API response: {result}")
-                
+                # Extract the generated text from the response
                 generated_text = result['choices'][0]['message']['content']
                 logger.debug(f"Generated text: {generated_text}")
                 
-                # Extract JSON from the response
-                start_idx = generated_text.find('[')
-                end_idx = generated_text.rfind(']') + 1
-                if start_idx == -1 or end_idx == 0:
-                    logger.error("Failed to parse JSON from OpenRouter response")
-                    logger.error(f"Generated text: {generated_text}")
-                    return get_fallback_questions()
+                # Extract JSON from the generated text
+                json_str = generated_text.split('```json')[1].split('```')[0].strip()
+                questions = json.loads(json_str)
                 
-                json_str = generated_text[start_idx:end_idx]
-                new_questions = json.loads(json_str)
-                logger.info(f"Successfully generated {len(new_questions)} new questions from OpenRouter API")
-                
-                # Add new questions to database
-                for q in new_questions:
-                    if not Question.query.filter_by(question_text=q["question"]).first():
-                        question = Question(
-                            question_text=q["question"],
-                            options=",".join(q["options"]),
-                            correct_answer=q["correct_answer"],
-                            explanation=q["explanation"],
-                            times_used=0
-                        )
-                        db.session.add(question)
+                # Store questions in database
+                for q in questions:
+                    question = Question(
+                        question_text=q['question'],
+                        options=json.dumps(q['options']),
+                        correct_answer=q['correct_answer'],
+                        explanation=q['explanation']
+                    )
+                    db.session.add(question)
                 
                 db.session.commit()
-                logger.info("Successfully added new questions to database")
-                all_questions = Question.query.all()
-                logger.info(f"Total questions in database after adding new ones: {len(all_questions)}")
+                logger.info(f"Added {len(questions)} new questions to database")
                 
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Network error while calling OpenRouter API: {str(e)}")
-                logger.error(traceback.format_exc())
+                # Select 10 random questions
+                selected_questions = random.sample(questions, min(10, len(questions)))
+                return [{
+                    'id': Question.query.filter_by(question_text=q['question']).first().id,
+                    'question': q['question'],
+                    'options': q['options'],
+                    'correct_answer': q['correct_answer'],
+                    'difficulty': q['difficulty'],
+                    'explanation': q['explanation']
+                } for q in selected_questions]
+                
+            except (KeyError, IndexError, json.JSONDecodeError) as e:
+                logger.error(f"Error parsing API response: {str(e)}")
+                logger.error(f"Response content: {response.text}")
                 return get_fallback_questions()
-            except (json.JSONDecodeError, KeyError, IndexError) as e:
-                logger.error(f"Error parsing OpenRouter API response: {str(e)}")
-                logger.error(traceback.format_exc())
-                return get_fallback_questions()
-            except Exception as e:
-                logger.error(f"Unexpected error while generating questions: {str(e)}")
-                logger.error(traceback.format_exc())
-                return get_fallback_questions()
-        
-        # Sort questions by times_used and last_used
-        sorted_questions = sorted(
-            all_questions,
-            key=lambda x: (x.times_used or 0, x.last_used or datetime.min)
-        )
-        
-        # Select 10 questions that have been used the least
-        selected_questions = sorted_questions[:10]
-        
-        # Update usage tracking
-        current_time = datetime.utcnow()
-        for question in selected_questions:
-            question.times_used = (question.times_used or 0) + 1
-            question.last_used = current_time
-        
-        db.session.commit()
-        
-        # Format questions for the test
-        test_questions = []
-        for question in selected_questions:
-            test_questions.append({
-                "id": question.id,
-                "question": question.question_text,
-                "options": question.options.split(','),
-                "correct_answer": question.correct_answer,
-                "explanation": question.explanation
-            })
-        
-        logger.info(f"Returning {len(test_questions)} questions for the test")
-        return test_questions
-        
+                
+        elif response.status_code == 402:
+            logger.error("Payment required for OpenRouter API")
+            return get_fallback_questions()
+        elif response.status_code == 401:
+            logger.error("Invalid OpenRouter API key")
+            return get_fallback_questions()
+        elif response.status_code == 404:
+            logger.error("OpenRouter API endpoint not found")
+            return get_fallback_questions()
+        else:
+            logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
+            return get_fallback_questions()
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error while calling OpenRouter API: {str(e)}")
+        return get_fallback_questions()
     except Exception as e:
-        logger.error(f"Error in generate_questions: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Unexpected error in generate_questions: {str(e)}")
         return get_fallback_questions()
 
 def get_fallback_questions():
