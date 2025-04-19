@@ -242,22 +242,21 @@ def init_db():
     """Initialize the database and create tables"""
     try:
         with app.app_context():
-            # Check if tables exist
+            # Drop all existing tables
+            db.drop_all()
+            logger.info("Dropped all existing tables")
+            
+            # Create all tables
+            db.create_all()
+            logger.info("Created all tables successfully")
+            
+            # Verify tables were created
             inspector = db.inspect(db.engine)
             table_names = inspector.get_table_names()
-            logger.info(f"Existing tables: {table_names}")
+            logger.info(f"Tables after creation: {table_names}")
             
             if 'question' not in table_names:
-                logger.warning("Question table not found, creating all tables")
-                db.create_all()
-                logger.info("Tables created successfully")
-                
-                # Verify tables were created
-                table_names = inspector.get_table_names()
-                logger.info(f"Tables after creation: {table_names}")
-                
-                if 'question' not in table_names:
-                    raise Exception("Failed to create question table")
+                raise Exception("Failed to create question table")
     except Exception as e:
         logger.error(f"Error initializing database: {str(e)}")
         logger.error(traceback.format_exc())
