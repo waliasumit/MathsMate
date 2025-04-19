@@ -99,11 +99,11 @@ migrate = Migrate(app, db)
 # Database Models
 class Test(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.String(50), nullable=False)  # Store user identifier
     score = db.Column(db.Integer, nullable=False)
     total_questions = db.Column(db.Integer, nullable=False)
-    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    questions_used = db.Column(db.Text, nullable=False)  # Store question IDs as JSON string
+    percentage = db.Column(db.Float, nullable=False)
+    questions_used = db.Column(db.String(500), nullable=False)  # Store as JSON string
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -168,14 +168,14 @@ def submit_test():
         
         # Calculate percentage
         total_questions = len(questions)
-        percentage = (score / total_questions) * 100
+        percentage = (score / total_questions) * 100 if total_questions > 0 else 0
         
         # Store test results
         test = Test(
             score=score,
             total_questions=total_questions,
             percentage=percentage,
-            questions_used=[q['id'] for q in questions]
+            questions_used=json.dumps([q['id'] for q in questions])
         )
         db.session.add(test)
         db.session.commit()
