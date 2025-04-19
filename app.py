@@ -237,8 +237,48 @@ def view_test_result():
     
     return redirect(url_for('index'))
 
+def init_db():
+    """Initialize the database and create tables"""
+    try:
+        with app.app_context():
+            # Check if tables exist
+            inspector = db.inspect(db.engine)
+            table_names = inspector.get_table_names()
+            logger.info(f"Existing tables: {table_names}")
+            
+            if 'question' not in table_names:
+                logger.warning("Question table not found, creating all tables")
+                db.create_all()
+                logger.info("Tables created successfully")
+                
+                # Verify tables were created
+                table_names = inspector.get_table_names()
+                logger.info(f"Tables after creation: {table_names}")
+                
+                if 'question' not in table_names:
+                    raise Exception("Failed to create question table")
+    except Exception as e:
+        logger.error(f"Error initializing database: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+
+# Initialize database when the application starts
+init_db()
+
 def generate_questions():
     try:
+        # Ensure database is initialized
+        with app.app_context():
+            try:
+                # Verify question table exists
+                inspector = db.inspect(db.engine)
+                if 'question' not in inspector.get_table_names():
+                    logger.warning("Question table not found, reinitializing database")
+                    init_db()
+            except Exception as e:
+                logger.error(f"Error verifying database: {str(e)}")
+                return get_fallback_questions()
+        
         # Check if we have enough questions in the database
         existing_questions = Question.query.all()
         logger.info(f"Current number of questions in database: {len(existing_questions)}")
@@ -448,34 +488,14 @@ def get_fallback_questions():
     return question_pool
 
 if __name__ == '__main__':
-    with app.app_context():
-        try:
-            # Create tables if they don't exist
-            db.create_all()
-            logger.info("Database tables created successfully")
-            
-            # Check if tables exist
-            inspector = db.inspect(db.engine)
-            table_names = inspector.get_table_names()
-            logger.info(f"Existing tables: {table_names}")
-            
-            if 'question' not in table_names:
-                logger.warning("Question table not found, recreating all tables")
-                db.drop_all()
-                db.create_all()
-                logger.info("Tables recreated successfully")
-                
-        except Exception as e:
-            logger.error(f"Error initializing database: {str(e)}")
-            logger.error(traceback.format_exc())
-            # Try to recover by recreating tables
-            try:
-                db.drop_all()
-                db.create_all()
-                logger.info("Recovered database by recreating tables")
-            except Exception as e2:
-                logger.error(f"Failed to recover database: {str(e2)}")
-                raise
-    
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port) 
+    try:
+        # Initialize database
+        init_db()
+        
+        # Start the application
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port)
+    except Exception as e:
+        logger.error(f"Failed to start application: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise 
