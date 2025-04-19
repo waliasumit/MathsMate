@@ -34,15 +34,16 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
 
-# Database configuration for production
+# Database configuration
 if os.environ.get('FLASK_ENV') == 'production':
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///math_exam.db')
+    # Use PostgreSQL on Render
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url and database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///math_exam.db'
 else:
+    # Use SQLite for development
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///math_exam.db'
-
-# Ensure the database URL is properly formatted for production
-if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -272,6 +273,7 @@ def generate_questions():
             return get_fallback_questions()
         
         logger.info("Generating new questions using OpenRouter API")
+        logger.info(f"Using model: deepseek/deepseek-chat-v3-0324:free")
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "HTTP-Referer": "https://github.com/waliasumit/MathsMate",
@@ -292,26 +294,29 @@ def generate_questions():
             ]
         }
         
-        logger.debug(f"Making API request to: {OPENROUTER_API_URL}")
-        logger.debug(f"Request headers: {headers}")
-        logger.debug(f"Request data: {data}")
+        logger.info(f"Making API request to OpenRouter: {OPENROUTER_API_URL}")
+        logger.info(f"Request headers: {headers}")
+        logger.info(f"Request data: {data}")
         
         response = requests.post(OPENROUTER_API_URL, headers=headers, json=data)
-        logger.debug(f"API response status code: {response.status_code}")
-        logger.debug(f"API response headers: {response.headers}")
+        logger.info(f"API response status code: {response.status_code}")
+        logger.info(f"API response headers: {response.headers}")
         
         if response.status_code == 200:
             result = response.json()
-            logger.debug(f"Raw API response: {result}")
+            logger.info(f"Successfully received response from OpenRouter API")
+            logger.info(f"Model used: {result.get('model', 'Unknown')}")
+            logger.info(f"Provider: {result.get('provider', 'Unknown')}")
             
             try:
                 # Extract the generated text from the response
                 generated_text = result['choices'][0]['message']['content']
-                logger.debug(f"Generated text: {generated_text}")
+                logger.info(f"Successfully extracted generated text from response")
                 
                 # Extract JSON from the generated text
                 json_str = generated_text.split('```json')[1].split('```')[0].strip()
                 questions = json.loads(json_str)
+                logger.info(f"Successfully parsed {len(questions)} questions from response")
                 
                 # Store questions in database
                 for q in questions:
@@ -445,16 +450,32 @@ def get_fallback_questions():
 if __name__ == '__main__':
     with app.app_context():
         try:
-            # Drop all tables first
-            db.drop_all()
-            logger.info("Dropped all existing tables")
-            
-            # Create tables
+            # Create tables if they don't exist
             db.create_all()
             logger.info("Database tables created successfully")
+            
+            # Check if tables exist
+            inspector = db.inspect(db.engine)
+            table_names = inspector.get_table_names()
+            logger.info(f"Existing tables: {table_names}")
+            
+            if 'question' not in table_names:
+                logger.warning("Question table not found, recreating all tables")
+                db.drop_all()
+                db.create_all()
+                logger.info("Tables recreated successfully")
+                
         except Exception as e:
-            logger.error(f"Error creating database tables: {str(e)}")
+            logger.error(f"Error initializing database: {str(e)}")
             logger.error(traceback.format_exc())
+            # Try to recover by recreating tables
+            try:
+                db.drop_all()
+                db.create_all()
+                logger.info("Recovered database by recreating tables")
+            except Exception as e2:
+                logger.error(f"Failed to recover database: {str(e2)}")
+                raise
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port) 
