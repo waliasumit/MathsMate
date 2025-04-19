@@ -186,83 +186,133 @@ def view_test_result():
     return redirect(url_for('index'))
 
 def generate_questions():
-    """Generate a set of diverse math questions for Year 7 level."""
-    # Simple question pool with clear structure
+    # Question pool with more questions to ensure variety
     question_pool = [
         {
             "id": 1,
-            "question": "Solve: 3x + 5 = 20",
-            "options": ["3", "5", "7", "15"],
+            "question": "What is 12 × 4?",
+            "options": ["36", "48", "42", "56"],
             "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "Subtract 5 from both sides: 3x = 15, then divide by 3: x = 5"
+            "explanation": "12 × 4 = 48. You can break it down as (10 × 4) + (2 × 4) = 40 + 8 = 48"
         },
         {
             "id": 2,
-            "question": "If 2x - 3 = 11, what is the value of x?",
-            "options": ["5", "7", "8", "9"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "Add 3 to both sides: 2x = 14, then divide by 2: x = 7"
+            "question": "What is 15 ÷ 3?",
+            "options": ["3", "4", "5", "6"],
+            "correct_answer": 2,  # Index of correct answer (0-based)
+            "explanation": "15 ÷ 3 = 5. You can think of it as how many times 3 fits into 15"
         },
         {
             "id": 3,
-            "question": "Solve: 4(x + 2) = 24",
-            "options": ["2", "4", "6", "8"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "Divide both sides by 4: x + 2 = 6, then subtract 2: x = 4"
+            "question": "What is 7 × 8?",
+            "options": ["42", "48", "56", "64"],
+            "correct_answer": 2,  # Index of correct answer (0-based)
+            "explanation": "7 × 8 = 56. This is a common multiplication fact that's good to memorize"
         },
         {
             "id": 4,
-            "question": "If 5x + 3 = 3x + 9, what is the value of x?",
-            "options": ["2", "3", "4", "5"],
+            "question": "What is 24 ÷ 6?",
+            "options": ["3", "4", "5", "6"],
             "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "Subtract 3x from both sides: 2x + 3 = 9, then subtract 3: 2x = 6, then divide by 2: x = 3"
+            "explanation": "24 ÷ 6 = 4. You can think of it as how many times 6 fits into 24"
         },
         {
             "id": 5,
-            "question": "A store sells shirts for $25 each. If they have a 20% discount, what is the final price?",
-            "options": ["$15", "$18", "$20", "$22"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "20% of $25 is $5 (25 × 0.2 = 5). So the discounted price is $25 - $5 = $20"
+            "question": "What is 9 × 6?",
+            "options": ["45", "54", "63", "72"],
+            "correct_answer": 1,  # Index of correct answer (0-based)
+            "explanation": "9 × 6 = 54. You can use the trick: 10 × 6 = 60, then subtract 6 to get 54"
         },
         {
             "id": 6,
-            "question": "A train travels 120 kilometers in 2 hours. What is its speed in kilometers per hour?",
-            "options": ["40", "50", "60", "70"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "Speed = Distance ÷ Time = 120 ÷ 2 = 60 km/h"
+            "question": "What is 36 ÷ 9?",
+            "options": ["3", "4", "5", "6"],
+            "correct_answer": 1,  # Index of correct answer (0-based)
+            "explanation": "36 ÷ 9 = 4. You can think of it as how many times 9 fits into 36"
         },
         {
             "id": 7,
-            "question": "If a rectangle has a length of 8cm and a width of 5cm, what is its area?",
-            "options": ["13cm²", "26cm²", "40cm²", "45cm²"],
+            "question": "What is 11 × 5?",
+            "options": ["45", "50", "55", "60"],
             "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "Area = length × width = 8 × 5 = 40cm²"
+            "explanation": "11 × 5 = 55. You can break it down as (10 × 5) + (1 × 5) = 50 + 5 = 55"
         },
         {
             "id": 8,
-            "question": "A recipe requires 3/4 cup of sugar for 6 servings. How much sugar is needed for 8 servings?",
-            "options": ["1 cup", "1 1/4 cups", "1 1/2 cups", "2 cups"],
-            "correct_answer": 0,  # Index of correct answer (0-based)
-            "explanation": "If 6 servings need 3/4 cup, then 1 serving needs 3/4 ÷ 6 = 1/8 cup. For 8 servings: 1/8 × 8 = 1 cup"
+            "question": "What is 63 ÷ 7?",
+            "options": ["7", "8", "9", "10"],
+            "correct_answer": 2,  # Index of correct answer (0-based)
+            "explanation": "63 ÷ 7 = 9. You can think of it as how many times 7 fits into 63"
         },
         {
             "id": 9,
-            "question": "What is the next number in the sequence: 2, 4, 8, 16, ...?",
-            "options": ["20", "24", "32", "36"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "The pattern is multiplying by 2 each time: 2×2=4, 4×2=8, 8×2=16, 16×2=32"
+            "question": "What is 8 × 7?",
+            "options": ["48", "56", "64", "72"],
+            "correct_answer": 1,  # Index of correct answer (0-based)
+            "explanation": "8 × 7 = 56. This is another common multiplication fact that's good to memorize"
         },
         {
             "id": 10,
-            "question": "What is the next number in the sequence: 3, 6, 12, 24, ...?",
-            "options": ["30", "36", "48", "54"],
+            "question": "What is 45 ÷ 5?",
+            "options": ["7", "8", "9", "10"],
             "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "The pattern is multiplying by 2 each time: 3×2=6, 6×2=12, 12×2=24, 24×2=48"
+            "explanation": "45 ÷ 5 = 9. You can think of it as how many times 5 fits into 45"
+        },
+        {
+            "id": 11,
+            "question": "What is 13 × 4?",
+            "options": ["42", "48", "52", "56"],
+            "correct_answer": 2,  # Index of correct answer (0-based)
+            "explanation": "13 × 4 = 52. You can break it down as (10 × 4) + (3 × 4) = 40 + 12 = 52"
+        },
+        {
+            "id": 12,
+            "question": "What is 72 ÷ 8?",
+            "options": ["8", "9", "10", "11"],
+            "correct_answer": 1,  # Index of correct answer (0-based)
+            "explanation": "72 ÷ 8 = 9. You can think of it as how many times 8 fits into 72"
+        },
+        {
+            "id": 13,
+            "question": "What is 6 × 9?",
+            "options": ["45", "54", "63", "72"],
+            "correct_answer": 1,  # Index of correct answer (0-based)
+            "explanation": "6 × 9 = 54. This is the same as 9 × 6, showing that multiplication is commutative"
+        },
+        {
+            "id": 14,
+            "question": "What is 81 ÷ 9?",
+            "options": ["8", "9", "10", "11"],
+            "correct_answer": 1,  # Index of correct answer (0-based)
+            "explanation": "81 ÷ 9 = 9. You can think of it as how many times 9 fits into 81"
+        },
+        {
+            "id": 15,
+            "question": "What is 14 × 3?",
+            "options": ["36", "42", "48", "54"],
+            "correct_answer": 1,  # Index of correct answer (0-based)
+            "explanation": "14 × 3 = 42. You can break it down as (10 × 3) + (4 × 3) = 30 + 12 = 42"
         }
     ]
     
-    # Select 5 random questions
-    selected_questions = random.sample(question_pool, 5)
+    # Get the last test's questions from session if it exists
+    last_test_questions = session.get('last_test_questions', [])
+    
+    # Filter out questions that were in the last test (80% new questions)
+    available_questions = [q for q in question_pool if q['id'] not in last_test_questions]
+    
+    # If we don't have enough new questions, add some from the last test
+    if len(available_questions) < 8:  # 80% of 10 questions
+        # Get questions from last test that we can reuse
+        reusable_questions = [q for q in question_pool if q['id'] in last_test_questions]
+        # Add enough questions to reach 8 new questions
+        available_questions.extend(reusable_questions[:8 - len(available_questions)])
+    
+    # Select 10 random questions from the available pool
+    selected_questions = random.sample(available_questions, min(10, len(available_questions)))
+    
+    # Store the IDs of the selected questions for the next test
+    session['last_test_questions'] = [q['id'] for q in selected_questions]
     
     # Assign new IDs to avoid conflicts
     for i, question in enumerate(selected_questions):
