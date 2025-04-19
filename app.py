@@ -166,7 +166,16 @@ def submit_test():
             if user_answer is not None and user_answer == question['correct_answer']:
                 score += 1
         
-        # Store test results
+        # Store test results in session
+        session['test_results'] = {
+            'score': score,
+            'total_questions': total_questions,
+            'percentage': (score / total_questions) * 100,
+            'questions': session['current_test']['questions'],
+            'answers': answers
+        }
+        
+        # Store test history
         test_history = load_test_history()
         if user_id not in test_history:
             test_history[user_id] = []
@@ -202,10 +211,6 @@ def results():
     if not test_results:
         flash('No test results found.', 'error')
         return redirect(url_for('start_test'))
-    
-    # Ensure the test_results has all required fields
-    if 'answered' not in test_results:
-        test_results['answered'] = test_results.get('total', 0)
     
     return render_template('results.html', results=test_results)
 
