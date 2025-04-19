@@ -7,9 +7,17 @@ import json
 import random
 import logging
 import traceback
+import requests
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,  # Changed from INFO to DEBUG
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -23,6 +31,45 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# DeepSeek API configuration
+DEEPSEEK_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+DEEPSEEK_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Debug logging for API key
+if DEEPSEEK_API_KEY:
+    logger.info("OpenRouter API key found in environment variables")
+    # Log first 4 characters and last 4 characters of the key for security
+    masked_key = DEEPSEEK_API_KEY[:4] + "..." + DEEPSEEK_API_KEY[-4:]
+    logger.info(f"API key (masked): {masked_key}")
+    logger.info(f"API key length: {len(DEEPSEEK_API_KEY)}")
+else:
+    logger.warning("OpenRouter API key not found in environment variables")
+    logger.warning("Please set OPENROUTER_API_KEY environment variable")
+
+# File paths for storing data
+QUESTIONS_FILE = 'questions.json'
+TEST_HISTORY_FILE = 'test_history.json'
+
+def load_questions():
+    if os.path.exists(QUESTIONS_FILE):
+        with open(QUESTIONS_FILE, 'r') as f:
+            return json.load(f)
+    return []
+
+def save_questions(questions):
+    with open(QUESTIONS_FILE, 'w') as f:
+        json.dump(questions, f)
+
+def load_test_history():
+    if os.path.exists(TEST_HISTORY_FILE):
+        with open(TEST_HISTORY_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_test_history(history):
+    with open(TEST_HISTORY_FILE, 'w') as f:
+        json.dump(history, f)
+
 # Add custom Jinja2 filter for JSON handling
 @app.template_filter('fromjson')
 def fromjson_filter(value):
@@ -32,6 +79,24 @@ def fromjson_filter(value):
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+
+# Database Models
+class Test(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(50), nullable=False)  # Store user identifier
+    score = db.Column(db.Integer, nullable=False)
+    total_questions = db.Column(db.Integer, nullable=False)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    questions_used = db.Column(db.Text, nullable=False)  # Store question IDs as JSON string
+
+class Question(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    question_text = db.Column(db.String(500), nullable=False)
+    options = db.Column(db.String(500), nullable=False)
+    correct_answer = db.Column(db.Integer, nullable=False)
+    explanation = db.Column(db.String(500), nullable=False)
+    times_used = db.Column(db.Integer, default=0)  # Track how many times a question has been used
+    last_used = db.Column(db.DateTime)  # Track when the question was last used
 
 # Error handler for 500 errors
 @app.errorhandler(500)
@@ -64,90 +129,56 @@ def start_test():
 @app.route('/submit_test', methods=['POST'])
 def submit_test():
     try:
-        # Get JSON data from request
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data received'}), 400
-        
         if 'current_test' not in session:
-            return jsonify({'error': 'No test in progress. Please start a new test.'}), 400
-        
+            return jsonify({'error': 'No test in progress'}), 400
+            
+        data = request.get_json()
         answers = data.get('answers', {})
-        current_test = session['current_test']
-        questions = current_test['questions']
         
-        # Initialize results
+        # Get user identifier
+        user_id = request.remote_addr
+        
+        # Calculate score
         score = 0
-        total_questions = len(questions)
-        feedback = []
+        total_questions = len(session['current_test']['questions'])
+        question_ids = []
         
-        # Process each question
-        for question in questions:
-            q_id = f"q_{question['id']}"
-            user_answer = answers.get(q_id)
+        for question in session['current_test']['questions']:
+            question_id = question['id']
+            question_ids.append(question_id)
+            user_answer = answers.get(str(question_id))
             
-            if user_answer is None:
-                feedback.append({
-                    'question': question['question'],
-                    'user_answer': 'Not answered',
-                    'correct_answer': question['options'][question['correct_answer']],
-                    'explanation': question['explanation'],
-                    'is_correct': False
-                })
-                continue
-            
-            # Find the index of the user's answer in the options list
-            try:
-                user_answer_index = question['options'].index(user_answer)
-                is_correct = user_answer_index == question['correct_answer']
-                
-                if is_correct:
-                    score += 1
-                
-                feedback.append({
-                    'question': question['question'],
-                    'user_answer': user_answer,
-                    'correct_answer': question['options'][question['correct_answer']],
-                    'explanation': question['explanation'],
-                    'is_correct': is_correct
-                })
-            except ValueError:
-                feedback.append({
-                    'question': question['question'],
-                    'user_answer': 'Invalid answer',
-                    'correct_answer': question['options'][question['correct_answer']],
-                    'explanation': question['explanation'],
-                    'is_correct': False
-                })
+            if user_answer is not None and user_answer == question['correct_answer']:
+                score += 1
         
-        # Calculate percentage score
-        percentage = (score / total_questions) * 100
+        # Store test results
+        test_history = load_test_history()
+        if user_id not in test_history:
+            test_history[user_id] = []
         
-        # Create test result
-        test_result = {
-            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        test_history[user_id].append({
+            'timestamp': datetime.now().isoformat(),
             'score': score,
-            'total': total_questions,
-            'percentage': percentage,
-            'feedback': feedback
-        }
+            'total_questions': total_questions,
+            'questions_used': question_ids
+        })
         
-        # Store in session
-        session['test_results'] = test_result
+        # Keep only the last 5 tests per user
+        test_history[user_id] = test_history[user_id][-5:]
+        save_test_history(test_history)
         
-        if 'test_history' not in session:
-            session['test_history'] = []
-        
-        # Add to test history, keeping only the last 5 tests
-        session['test_history'] = [test_result] + session['test_history'][:4]
-        
-        # Clear current test
+        # Clear current test from session
         session.pop('current_test', None)
         
-        return jsonify(test_result)
+        return jsonify({
+            'score': score,
+            'total_questions': total_questions,
+            'percentage': (score / total_questions) * 100
+        })
         
     except Exception as e:
-        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+        logger.error(f"Error submitting test: {str(e)}")
+        return jsonify({'error': 'An error occurred while submitting the test'}), 500
 
 @app.route('/results')
 def results():
@@ -186,143 +217,247 @@ def view_test_result():
     return redirect(url_for('index'))
 
 def generate_questions():
-    # Question pool with more questions to ensure variety
+    try:
+        # Check if API key is configured
+        if not DEEPSEEK_API_KEY:
+            logger.warning("OpenRouter API key not found. Using predefined questions.")
+            return get_fallback_questions()
+
+        logger.info("Starting question generation process...")
+        # Get all questions from the database
+        all_questions = Question.query.all()
+        logger.info(f"Current number of questions in database: {len(all_questions)}")
+        
+        # If we don't have enough questions, try to generate more using OpenRouter
+        if len(all_questions) < 20:
+            try:
+                logger.info("Attempting to generate new questions using OpenRouter API...")
+                # Generate new questions
+                prompt = """
+                Generate 20 math questions for Year 9 students with the following requirements:
+                1. Mix of different question types:
+                   - Algebra (solving equations, expressions)
+                   - Word problems (real-world applications)
+                   - Number patterns and sequences
+                   - Probability and statistics
+                   - Geometry (area, perimeter, angles)
+                2. Difficulty levels:
+                   - 7 easy questions (basic concepts)
+                   - 7 medium questions (application of concepts)
+                   - 6 challenging questions (complex problems)
+                3. Each question should have 4 options
+                4. Include detailed explanations showing the step-by-step solution
+                5. Format the response as a JSON array
+                """
+                
+                # Make API request to OpenRouter
+                headers = {
+                    "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "http://localhost:5000",
+                    "X-Title": "Maths Exam App"
+                }
+                
+                data = {
+                    "model": "deepseek/deepseek-chat-v3-0324:free",
+                    "messages": [
+                        {"role": "system", "content": "You are an experienced math teacher creating challenging and engaging questions."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.7
+                }
+
+                logger.info("Sending request to OpenRouter API...")
+                logger.debug(f"Request headers: {headers}")
+                logger.debug(f"Request data: {data}")
+                
+                response = requests.post(DEEPSEEK_API_URL, headers=headers, json=data, timeout=10)
+                
+                logger.info(f"OpenRouter API response status code: {response.status_code}")
+                logger.debug(f"Response headers: {dict(response.headers)}")
+                
+                if response.status_code == 402:
+                    logger.error("OpenRouter API returned Payment Required error. Please check your API key and credits.")
+                    logger.error(f"Response body: {response.text}")
+                    return get_fallback_questions()
+                elif response.status_code != 200:
+                    logger.error(f"OpenRouter API returned status code {response.status_code}")
+                    logger.error(f"Response body: {response.text}")
+                    return get_fallback_questions()
+                
+                # Parse the response
+                result = response.json()
+                logger.debug(f"Raw API response: {result}")
+                
+                generated_text = result['choices'][0]['message']['content']
+                logger.debug(f"Generated text: {generated_text}")
+                
+                # Extract JSON from the response
+                start_idx = generated_text.find('[')
+                end_idx = generated_text.rfind(']') + 1
+                if start_idx == -1 or end_idx == 0:
+                    logger.error("Failed to parse JSON from OpenRouter response")
+                    logger.error(f"Generated text: {generated_text}")
+                    return get_fallback_questions()
+                
+                json_str = generated_text[start_idx:end_idx]
+                new_questions = json.loads(json_str)
+                logger.info(f"Successfully generated {len(new_questions)} new questions from OpenRouter API")
+                
+                # Add new questions to database
+                for q in new_questions:
+                    if not Question.query.filter_by(question_text=q["question"]).first():
+                        question = Question(
+                            question_text=q["question"],
+                            options=",".join(q["options"]),
+                            correct_answer=q["correct_answer"],
+                            explanation=q["explanation"],
+                            times_used=0
+                        )
+                        db.session.add(question)
+                
+                db.session.commit()
+                logger.info("Successfully added new questions to database")
+                all_questions = Question.query.all()
+                logger.info(f"Total questions in database after adding new ones: {len(all_questions)}")
+                
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Network error while calling OpenRouter API: {str(e)}")
+                logger.error(traceback.format_exc())
+                return get_fallback_questions()
+            except (json.JSONDecodeError, KeyError, IndexError) as e:
+                logger.error(f"Error parsing OpenRouter API response: {str(e)}")
+                logger.error(traceback.format_exc())
+                return get_fallback_questions()
+            except Exception as e:
+                logger.error(f"Unexpected error while generating questions: {str(e)}")
+                logger.error(traceback.format_exc())
+                return get_fallback_questions()
+        
+        # Sort questions by times_used and last_used
+        sorted_questions = sorted(
+            all_questions,
+            key=lambda x: (x.times_used or 0, x.last_used or datetime.min)
+        )
+        
+        # Select 10 questions that have been used the least
+        selected_questions = sorted_questions[:10]
+        
+        # Update usage tracking
+        current_time = datetime.utcnow()
+        for question in selected_questions:
+            question.times_used = (question.times_used or 0) + 1
+            question.last_used = current_time
+        
+        db.session.commit()
+        
+        # Format questions for the test
+        test_questions = []
+        for question in selected_questions:
+            test_questions.append({
+                "id": question.id,
+                "question": question.question_text,
+                "options": question.options.split(','),
+                "correct_answer": question.correct_answer,
+                "explanation": question.explanation
+            })
+        
+        logger.info(f"Returning {len(test_questions)} questions for the test")
+        return test_questions
+        
+    except Exception as e:
+        logger.error(f"Error in generate_questions: {str(e)}")
+        logger.error(traceback.format_exc())
+        return get_fallback_questions()
+
+def get_fallback_questions():
+    """Return a set of predefined questions when API generation fails"""
+    logger.info("Using fallback questions")
+    # Fallback question pool with more advanced questions
     question_pool = [
         {
             "id": 1,
-            "question": "What is 12 × 4?",
-            "options": ["36", "48", "42", "56"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "12 × 4 = 48. You can break it down as (10 × 4) + (2 × 4) = 40 + 8 = 48"
+            "question": "Solve for x: 3x - 7 = 14",
+            "options": ["7", "21", "9", "11"],
+            "correct_answer": 0,
+            "explanation": "To solve 3x - 7 = 14:\n1. Add 7 to both sides: 3x = 21\n2. Divide both sides by 3: x = 7"
         },
         {
             "id": 2,
-            "question": "What is 15 ÷ 3?",
-            "options": ["3", "4", "5", "6"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "15 ÷ 3 = 5. You can think of it as how many times 3 fits into 15"
+            "question": "What is the next number in the sequence: 2, 5, 10, 17, 26, ...?",
+            "options": ["35", "37", "39", "41"],
+            "correct_answer": 1,
+            "explanation": "The pattern is adding consecutive odd numbers:\n2 + 3 = 5\n5 + 5 = 10\n10 + 7 = 17\n17 + 9 = 26\n26 + 11 = 37"
         },
         {
             "id": 3,
-            "question": "What is 7 × 8?",
-            "options": ["42", "48", "56", "64"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "7 × 8 = 56. This is a common multiplication fact that's good to memorize"
+            "question": "A rectangle has a length of 12 cm and a width of 8 cm. What is its area?",
+            "options": ["96 cm²", "84 cm²", "72 cm²", "64 cm²"],
+            "correct_answer": 0,
+            "explanation": "Area of rectangle = length × width\n= 12 cm × 8 cm = 96 cm²"
         },
         {
             "id": 4,
-            "question": "What is 24 ÷ 6?",
-            "options": ["3", "4", "5", "6"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "24 ÷ 6 = 4. You can think of it as how many times 6 fits into 24"
+            "question": "If a number is increased by 20% and then decreased by 20%, what is the net change?",
+            "options": ["No change", "4% decrease", "4% increase", "20% decrease"],
+            "correct_answer": 1,
+            "explanation": "Let the number be 100\nAfter 20% increase: 100 + 20 = 120\nAfter 20% decrease: 120 - 24 = 96\nNet change = (100 - 96)/100 × 100 = 4% decrease"
         },
         {
             "id": 5,
-            "question": "What is 9 × 6?",
-            "options": ["45", "54", "63", "72"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "9 × 6 = 54. You can use the trick: 10 × 6 = 60, then subtract 6 to get 54"
+            "question": "What is the probability of rolling a sum of 7 with two dice?",
+            "options": ["1/6", "1/12", "1/36", "1/4"],
+            "correct_answer": 0,
+            "explanation": "Total possible outcomes = 6 × 6 = 36\nFavorable outcomes for sum 7: (1,6), (2,5), (3,4), (4,3), (5,2), (6,1) = 6\nProbability = 6/36 = 1/6"
         },
         {
             "id": 6,
-            "question": "What is 36 ÷ 9?",
-            "options": ["3", "4", "5", "6"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "36 ÷ 9 = 4. You can think of it as how many times 9 fits into 36"
+            "question": "A train travels 300 km in 4 hours. What is its average speed?",
+            "options": ["75 km/h", "80 km/h", "85 km/h", "90 km/h"],
+            "correct_answer": 0,
+            "explanation": "Average speed = Total distance / Total time\n= 300 km / 4 hours = 75 km/h"
         },
         {
             "id": 7,
-            "question": "What is 11 × 5?",
-            "options": ["45", "50", "55", "60"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "11 × 5 = 55. You can break it down as (10 × 5) + (1 × 5) = 50 + 5 = 55"
+            "question": "If 2x + 3y = 12 and x - y = 1, what is the value of x?",
+            "options": ["3", "4", "5", "6"],
+            "correct_answer": 0,
+            "explanation": "From x - y = 1, we get y = x - 1\nSubstitute in first equation: 2x + 3(x - 1) = 12\n5x - 3 = 12\n5x = 15\nx = 3"
         },
         {
             "id": 8,
-            "question": "What is 63 ÷ 7?",
-            "options": ["7", "8", "9", "10"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "63 ÷ 7 = 9. You can think of it as how many times 7 fits into 63"
+            "question": "What is the area of a circle with radius 7 cm? (Use π = 22/7)",
+            "options": ["154 cm²", "147 cm²", "140 cm²", "133 cm²"],
+            "correct_answer": 0,
+            "explanation": "Area of circle = πr²\n= (22/7) × 7 × 7\n= 22 × 7\n= 154 cm²"
         },
         {
             "id": 9,
-            "question": "What is 8 × 7?",
-            "options": ["48", "56", "64", "72"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "8 × 7 = 56. This is another common multiplication fact that's good to memorize"
+            "question": "A shop offers a 15% discount on a $200 item. What is the final price?",
+            "options": ["$170", "$175", "$180", "$185"],
+            "correct_answer": 0,
+            "explanation": "Discount amount = 15% of $200 = $30\nFinal price = $200 - $30 = $170"
         },
         {
             "id": 10,
-            "question": "What is 45 ÷ 5?",
-            "options": ["7", "8", "9", "10"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "45 ÷ 5 = 9. You can think of it as how many times 5 fits into 45"
-        },
-        {
-            "id": 11,
-            "question": "What is 13 × 4?",
-            "options": ["42", "48", "52", "56"],
-            "correct_answer": 2,  # Index of correct answer (0-based)
-            "explanation": "13 × 4 = 52. You can break it down as (10 × 4) + (3 × 4) = 40 + 12 = 52"
-        },
-        {
-            "id": 12,
-            "question": "What is 72 ÷ 8?",
-            "options": ["8", "9", "10", "11"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "72 ÷ 8 = 9. You can think of it as how many times 8 fits into 72"
-        },
-        {
-            "id": 13,
-            "question": "What is 6 × 9?",
-            "options": ["45", "54", "63", "72"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "6 × 9 = 54. This is the same as 9 × 6, showing that multiplication is commutative"
-        },
-        {
-            "id": 14,
-            "question": "What is 81 ÷ 9?",
-            "options": ["8", "9", "10", "11"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "81 ÷ 9 = 9. You can think of it as how many times 9 fits into 81"
-        },
-        {
-            "id": 15,
-            "question": "What is 14 × 3?",
-            "options": ["36", "42", "48", "54"],
-            "correct_answer": 1,  # Index of correct answer (0-based)
-            "explanation": "14 × 3 = 42. You can break it down as (10 × 3) + (4 × 3) = 30 + 12 = 42"
+            "question": "What is the value of 2³ + 3²?",
+            "options": ["17", "18", "19", "20"],
+            "correct_answer": 0,
+            "explanation": "2³ = 8 and 3² = 9\n8 + 9 = 17"
         }
     ]
     
-    # Get the last test's questions from session if it exists
-    last_test_questions = session.get('last_test_questions', [])
-    
-    # Filter out questions that were in the last test (80% new questions)
-    available_questions = [q for q in question_pool if q['id'] not in last_test_questions]
-    
-    # If we don't have enough new questions, add some from the last test
-    if len(available_questions) < 8:  # 80% of 10 questions
-        # Get questions from last test that we can reuse
-        reusable_questions = [q for q in question_pool if q['id'] in last_test_questions]
-        # Add enough questions to reach 8 new questions
-        available_questions.extend(reusable_questions[:8 - len(available_questions)])
-    
-    # Select 10 random questions from the available pool
-    selected_questions = random.sample(available_questions, min(10, len(available_questions)))
-    
-    # Store the IDs of the selected questions for the next test
-    session['last_test_questions'] = [q['id'] for q in selected_questions]
-    
-    # Assign new IDs to avoid conflicts
-    for i, question in enumerate(selected_questions):
-        question["id"] = i + 1
-    
-    return selected_questions
+    # Return all 10 questions
+    return question_pool
 
 if __name__ == '__main__':
     with app.app_context():
         try:
+            # Drop all tables first
+            db.drop_all()
+            logger.info("Dropped all existing tables")
+            
+            # Create tables
             db.create_all()
             logger.info("Database tables created successfully")
         except Exception as e:
