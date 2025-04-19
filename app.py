@@ -9,25 +9,40 @@ import logging
 import traceback
 import requests
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,  # Changed from INFO to DEBUG
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()
-    ]
-)
+# Configure logging for production
+if os.environ.get('FLASK_ENV') == 'production':
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('app.log')
+        ]
+    )
+else:
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('app.log')
+        ]
+    )
+
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
 
-# Handle database URL for Render
-database_url = os.environ.get('DATABASE_URL', 'sqlite:///maths_exam.db')
-if database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql://", 1)
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+# Database configuration for production
+if os.environ.get('FLASK_ENV') == 'production':
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///math_exam.db')
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///math_exam.db'
+
+# Ensure the database URL is properly formatted for production
+if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
