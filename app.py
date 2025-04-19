@@ -109,7 +109,8 @@ class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     question_text = db.Column(db.String(500), nullable=False)
     options = db.Column(db.String(500), nullable=False)
-    correct_answer = db.Column(db.Integer, nullable=False)
+    correct_answer = db.Column(db.String(50), nullable=False)
+    difficulty = db.Column(db.String(20), nullable=False, default='medium')
     explanation = db.Column(db.String(500), nullable=False)
     times_used = db.Column(db.Integer, default=0)  # Track how many times a question has been used
     last_used = db.Column(db.DateTime)  # Track when the question was last used
@@ -301,7 +302,7 @@ def generate_questions():
                 return [{
                     'id': q.id,
                     'question': q.question_text,
-                    'options': q.options,
+                    'options': json.loads(q.options),
                     'correct_answer': q.correct_answer,
                     'difficulty': q.difficulty,
                     'explanation': q.explanation
@@ -364,6 +365,7 @@ def generate_questions():
                         question_text=q['question'],
                         options=json.dumps(q['options']),
                         correct_answer=q['correct_answer'],
+                        difficulty=q.get('difficulty', 'medium'),
                         explanation=q['explanation']
                     )
                     db.session.add(question)
@@ -378,7 +380,7 @@ def generate_questions():
                     'question': q['question'],
                     'options': q['options'],
                     'correct_answer': q['correct_answer'],
-                    'difficulty': q['difficulty'],
+                    'difficulty': q.get('difficulty', 'medium'),
                     'explanation': q['explanation']
                 } for q in selected_questions]
                 
