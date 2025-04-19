@@ -30,9 +30,9 @@
                 <div class="list-group-item">
                     <h5 class="mb-2">Question {{ loop.index }}</h5>
                     <p class="mb-2">{{ question.question }}</p>
-                    <p class="mb-1"><strong>Your answer:</strong> {{ results.answers.get(question.id|string, 'Not answered') }}</p>
+                    <p class="mb-1"><strong>Your answer:</strong> {{ results.answers[question.id|string] }}</p>
                     <p class="mb-1"><strong>Correct answer:</strong> {{ question.correct_answer }}</p>
-                    {% if results.answers.get(question.id|string) == question.correct_answer %}
+                    {% if results.answers[question.id|string] == question.correct_answer %}
                         <span class="badge bg-success">Correct</span>
                     {% else %}
                         <span class="badge bg-danger">Incorrect</span>

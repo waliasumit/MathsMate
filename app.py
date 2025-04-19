@@ -146,65 +146,74 @@ def start_test():
 @app.route('/submit_test', methods=['POST'])
 def submit_test():
     try:
-        if 'current_test' not in session:
-            return jsonify({'error': 'No test in progress'}), 400
-            
-        data = request.get_json()
-        answers = data.get('answers', {})
+        # Get answers from form
+        answers = {}
+        for key, value in request.form.items():
+            if key.startswith('answer_'):
+                question_id = key.replace('answer_', '')
+                answers[question_id] = value
         
-        # Get user identifier
-        user_id = request.remote_addr
+        # Get questions from session
+        questions = session.get('current_test', {}).get('questions', [])
+        if not questions:
+            flash('No test questions found. Please start a new test.', 'error')
+            return redirect(url_for('index'))
         
         # Calculate score
         score = 0
-        total_questions = len(session['current_test']['questions'])
-        question_ids = []
-        
-        for question in session['current_test']['questions']:
-            question_id = question['id']
-            question_ids.append(question_id)
-            user_answer = answers.get(str(question_id))
-            
-            if user_answer is not None and user_answer == question['correct_answer']:
+        for question in questions:
+            question_id = str(question['id'])
+            if question_id in answers and answers[question_id] == question['correct_answer']:
                 score += 1
         
-        # Store test results in session
-        session['test_results'] = {
+        # Calculate percentage
+        total_questions = len(questions)
+        percentage = (score / total_questions) * 100
+        
+        # Store test results
+        test = Test(
+            score=score,
+            total_questions=total_questions,
+            percentage=percentage,
+            questions_used=[q['id'] for q in questions]
+        )
+        db.session.add(test)
+        db.session.commit()
+        
+        # Prepare results for display
+        results = {
             'score': score,
             'total_questions': total_questions,
-            'percentage': (score / total_questions) * 100,
-            'questions': session['current_test']['questions'],
+            'percentage': percentage,
+            'questions': questions,
             'answers': answers
         }
         
         # Store test history
         test_history = load_test_history()
-        if user_id not in test_history:
-            test_history[user_id] = []
+        if request.remote_addr not in test_history:
+            test_history[request.remote_addr] = []
         
-        test_history[user_id].append({
+        test_history[request.remote_addr].append({
             'timestamp': datetime.now().isoformat(),
             'score': score,
             'total_questions': total_questions,
-            'questions_used': question_ids
+            'questions_used': [q['id'] for q in questions]
         })
         
         # Keep only the last 5 tests per user
-        test_history[user_id] = test_history[user_id][-5:]
+        test_history[request.remote_addr] = test_history[request.remote_addr][-5:]
         save_test_history(test_history)
         
-        # Clear current test from session
+        # Clear session data
         session.pop('current_test', None)
         
-        return jsonify({
-            'score': score,
-            'total_questions': total_questions,
-            'percentage': (score / total_questions) * 100
-        })
-        
+        return render_template('results.html', results=results)
     except Exception as e:
         logger.error(f"Error submitting test: {str(e)}")
-        return jsonify({'error': 'An error occurred while submitting the test'}), 500
+        logger.error(traceback.format_exc())
+        flash('An error occurred while submitting your test. Please try again.', 'error')
+        return redirect(url_for('index'))
 
 @app.route('/results')
 def results():
