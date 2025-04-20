@@ -95,63 +95,114 @@ def index():
 @app.route('/start_test', methods=['GET'])
 def start_test():
     try:
+        app.logger.info("Starting new test generation")
+        
         # Generate or get questions
-        questions = generate_questions()
+        try:
+            questions = generate_questions()
+            if not questions:
+                app.logger.error("No questions generated")
+                flash('Failed to generate questions. Please try again.', 'error')
+                return redirect(url_for('index'))
+            app.logger.info(f"Generated {len(questions)} questions")
+        except Exception as e:
+            app.logger.error(f"Error generating questions: {str(e)}", exc_info=True)
+            flash('An error occurred while generating questions. Please try again.', 'error')
+            return redirect(url_for('index'))
         
-        # Create a new test with required fields
-        test = Test(
-            score=0,
-            total_questions=len(questions),
-            percentage=0.0,
-            completed=False,
-            questions_used=json.dumps([])  # Initialize with empty list
-        )
-        db.session.add(test)
-        db.session.commit()
+        try:
+            # Create a new test with required fields
+            test = Test(
+                score=0,
+                total_questions=len(questions),
+                percentage=0.0,
+                completed=False,
+                questions_used=json.dumps([])  # Initialize with empty list
+            )
+            db.session.add(test)
+            db.session.commit()
+            app.logger.info(f"Created new test with ID: {test.id}")
+        except Exception as e:
+            app.logger.error(f"Error creating test: {str(e)}", exc_info=True)
+            flash('An error occurred while creating the test. Please try again.', 'error')
+            return redirect(url_for('index'))
         
-        # Add questions to the test
-        for q in questions:
-            # If the question is from the database, it will have an id
-            # If it's newly generated, we need to save it first
-            if 'id' not in q:
-                question = Question(
-                    question_text=q['question'],
-                    options=json.dumps(q['options']),
-                    correct_answer=q['correct_answer'],
-                    explanation=q['explanation']
-                )
-                db.session.add(question)
+        try:
+            # Add questions to the test
+            for q in questions:
+                # If the question is from the database, it will have an id
+                # If it's newly generated, we need to save it first
+                if 'id' not in q:
+                    question = Question(
+                        question_text=q['question'],
+                        options=json.dumps(q['options']),
+                        correct_answer=q['correct_answer'],
+                        explanation=q['explanation']
+                    )
+                    db.session.add(question)
+                    db.session.commit()
+                    q['id'] = question.id
+                    app.logger.debug(f"Saved new question with ID: {question.id}")
+                
+                test_question = TestQuestion(test_id=test.id, question_id=q['id'])
+                db.session.add(test_question)
+                
+                # Update questions_used list
+                questions_used = json.loads(test.questions_used)
+                questions_used.append(q['id'])
+                test.questions_used = json.dumps(questions_used)
+            
+            db.session.commit()
+            app.logger.info(f"Added {len(questions)} questions to test {test.id}")
+        except Exception as e:
+            app.logger.error(f"Error adding questions to test: {str(e)}", exc_info=True)
+            # Clean up the test if question addition fails
+            db.session.rollback()
+            if test.id:
+                Test.query.filter_by(id=test.id).delete()
                 db.session.commit()
-                q['id'] = question.id
+            flash('An error occurred while setting up the test. Please try again.', 'error')
+            return redirect(url_for('index'))
+        
+        try:
+            # Get the questions with their IDs for the template
+            test_questions = TestQuestion.query.filter_by(test_id=test.id).all()
+            if not test_questions:
+                app.logger.error(f"No questions found for test {test.id}")
+                flash('No questions found for the test. Please try again.', 'error')
+                return redirect(url_for('index'))
             
-            test_question = TestQuestion(test_id=test.id, question_id=q['id'])
-            db.session.add(test_question)
+            questions_with_ids = []
+            for tq in test_questions:
+                question = Question.query.get(tq.question_id)
+                if not question:
+                    app.logger.error(f"Question {tq.question_id} not found")
+                    continue
+                questions_with_ids.append({
+                    'id': question.id,
+                    'question_text': question.question_text,
+                    'options': json.loads(question.options),
+                    'correct_answer': question.correct_answer,
+                    'explanation': question.explanation
+                })
             
-            # Update questions_used list
-            questions_used = json.loads(test.questions_used)
-            questions_used.append(q['id'])
-            test.questions_used = json.dumps(questions_used)
-        
-        db.session.commit()
-        
-        # Get the questions with their IDs for the template
-        test_questions = TestQuestion.query.filter_by(test_id=test.id).all()
-        questions_with_ids = []
-        for tq in test_questions:
-            question = Question.query.get(tq.question_id)
-            questions_with_ids.append({
-                'id': question.id,
-                'question_text': question.question_text,
-                'options': json.loads(question.options),
-                'correct_answer': question.correct_answer,
-                'explanation': question.explanation
-            })
-        
-        return render_template('test.html', test_id=test.id, questions=questions_with_ids)
-        
+            if not questions_with_ids:
+                app.logger.error("No valid questions found for the template")
+                flash('No valid questions found. Please try again.', 'error')
+                return redirect(url_for('index'))
+            
+            app.logger.info(f"Successfully prepared {len(questions_with_ids)} questions for test {test.id}")
+            return render_template('test.html', test_id=test.id, questions=questions_with_ids)
+            
+        except Exception as e:
+            app.logger.error(f"Error preparing questions for template: {str(e)}", exc_info=True)
+            flash('An error occurred while preparing the test. Please try again.', 'error')
+            return redirect(url_for('index'))
+            
     except Exception as e:
-        app.logger.error(f"Error in start_test: {str(e)}", exc_info=True)
-        return "An error occurred while starting the test. Please try again.", 500
+        app.logger.error(f"Unexpected error in start_test: {str(e)}", exc_info=True)
+        flash('An unexpected error occurred. Please try again.', 'error')
+        return redirect(url_for('index'))
 
 @app.route('/submit_test', methods=['POST'])
 def submit_test():
