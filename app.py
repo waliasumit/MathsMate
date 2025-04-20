@@ -246,7 +246,7 @@ def generate_questions():
             selected_questions = random.sample(existing_questions, 10)
             return [{
                 'id': q['id'],
-                'question': q['question'],
+                'question_text': q['question'],
                 'options': q['options'],
                 'correct_answer': q['correct_answer'],
                 'explanation': q['explanation']
@@ -284,7 +284,7 @@ def generate_questions():
                 
                 IMPORTANT: Return ONLY a JSON array of questions. Each question must be a JSON object with these exact fields:
                 {
-                    "question": "The question text",
+                    "question_text": "The question text",
                     "options": ["Option A", "Option B", "Option C", "Option D"],
                     "correct_answer": "A",  // Must be A, B, C, or D
                     "explanation": "Step-by-step explanation of the solution"
@@ -363,7 +363,7 @@ def generate_questions():
                 
                 # Validate each question
                 for i, q in enumerate(questions):
-                    if not all(key in q for key in ['question', 'options', 'correct_answer', 'explanation']):
+                    if not all(key in q for key in ['question_text', 'options', 'correct_answer', 'explanation']):
                         logger.error(f"Question {i+1} missing required fields")
                         logger.error(f"Question structure: {json.dumps(q, indent=2)}")
                         return get_fallback_questions()
@@ -405,70 +405,70 @@ def get_fallback_questions():
     question_pool = [
         {
             "id": 1,
-            "question": "Solve for x: 2(3x - 5) = 4x + 8",
+            "question_text": "Solve for x: 2(3x - 5) = 4x + 8",
             "options": ["9", "7", "5", "3"],
             "correct_answer": "A",
             "explanation": "To solve 2(3x - 5) = 4x + 8:\n1. Distribute: 6x - 10 = 4x + 8\n2. Subtract 4x: 2x - 10 = 8\n3. Add 10: 2x = 18\n4. Divide by 2: x = 9"
         },
         {
             "id": 2,
-            "question": "What is the volume of a cylinder with radius 4 cm and height 10 cm? (Use π = 3.14)",
+            "question_text": "What is the volume of a cylinder with radius 4 cm and height 10 cm? (Use π = 3.14)",
             "options": ["502.4 cm³", "401.92 cm³", "314 cm³", "251.2 cm³"],
             "correct_answer": "A",
             "explanation": "Volume of cylinder = πr²h\n= 3.14 × 4² × 10\n= 3.14 × 16 × 10\n= 502.4 cm³"
         },
         {
             "id": 3,
-            "question": "A bag contains 5 red marbles, 3 blue marbles, and 2 green marbles. What is the probability of drawing a blue marble?",
+            "question_text": "A bag contains 5 red marbles, 3 blue marbles, and 2 green marbles. What is the probability of drawing a blue marble?",
             "options": ["3/10", "1/3", "3/8", "1/2"],
             "correct_answer": "A",
             "explanation": "Total marbles = 5 + 3 + 2 = 10\nBlue marbles = 3\nProbability = 3/10"
         },
         {
             "id": 4,
-            "question": "If 3 pens cost $12, how much would 5 pens cost?",
+            "question_text": "If 3 pens cost $12, how much would 5 pens cost?",
             "options": ["$20", "$18", "$15", "$24"],
             "correct_answer": "A",
             "explanation": "Cost per pen = $12 ÷ 3 = $4\nCost for 5 pens = 5 × $4 = $20"
         },
         {
             "id": 5,
-            "question": "A shirt originally priced at $40 is on sale for 25% off. What is the sale price?",
+            "question_text": "A shirt originally priced at $40 is on sale for 25% off. What is the sale price?",
             "options": ["$30", "$35", "$32", "$28"],
             "correct_answer": "A",
             "explanation": "Discount = 25% of $40 = $10\nSale price = $40 - $10 = $30"
         },
         {
             "id": 6,
-            "question": "In a right triangle, if one angle is 30°, what is the measure of the other acute angle?",
+            "question_text": "In a right triangle, if one angle is 30°, what is the measure of the other acute angle?",
             "options": ["60°", "45°", "90°", "30°"],
             "correct_answer": "A",
             "explanation": "Sum of angles in a triangle = 180°\nRight angle = 90°\nOther acute angle = 180° - 90° - 30° = 60°"
         },
         {
             "id": 7,
-            "question": "Simplify: (2x² + 3x - 5) + (x² - 4x + 2)",
+            "question_text": "Simplify: (2x² + 3x - 5) + (x² - 4x + 2)",
             "options": ["3x² - x - 3", "3x² + 7x - 3", "x² - x - 3", "3x² - x + 3"],
             "correct_answer": "A",
             "explanation": "Combine like terms:\n(2x² + x²) + (3x - 4x) + (-5 + 2)\n= 3x² - x - 3"
         },
         {
             "id": 8,
-            "question": "What is the area of a triangle with base 8 cm and height 6 cm?",
+            "question_text": "What is the area of a triangle with base 8 cm and height 6 cm?",
             "options": ["24 cm²", "48 cm²", "32 cm²", "16 cm²"],
             "correct_answer": "A",
             "explanation": "Area of triangle = (base × height) ÷ 2\n= (8 × 6) ÷ 2\n= 48 ÷ 2\n= 24 cm²"
         },
         {
             "id": 9,
-            "question": "If a recipe calls for 2 cups of flour for 12 cookies, how many cups are needed for 30 cookies?",
+            "question_text": "If a recipe calls for 2 cups of flour for 12 cookies, how many cups are needed for 30 cookies?",
             "options": ["5 cups", "4 cups", "6 cups", "3 cups"],
             "correct_answer": "A",
             "explanation": "Flour per cookie = 2 cups ÷ 12 = 1/6 cup\nFor 30 cookies = 30 × 1/6 = 5 cups"
         },
         {
             "id": 10,
-            "question": "A bank offers 5% simple interest per year. If you deposit $1000, how much interest will you earn in 3 years?",
+            "question_text": "A bank offers 5% simple interest per year. If you deposit $1000, how much interest will you earn in 3 years?",
             "options": ["$150", "$157.63", "$165", "$175"],
             "correct_answer": "A",
             "explanation": "Simple Interest = Principal × Rate × Time\n= $1000 × 0.05 × 3\n= $150"
