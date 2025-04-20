@@ -10,6 +10,7 @@ import traceback
 import requests
 from dotenv import load_dotenv
 import secrets
+from sqlalchemy import inspect
 
 # Load environment variables from .env file
 load_dotenv()
@@ -61,6 +62,7 @@ class TestQuestion(db.Model):
     question = db.relationship('Question', backref=db.backref('test_questions', lazy=True))
 
 class Test(db.Model):
+    __tablename__ = 'test'
     id = db.Column(db.Integer, primary_key=True)
     score = db.Column(db.Integer, nullable=False)
     total_questions = db.Column(db.Integer, nullable=False)
@@ -70,6 +72,7 @@ class Test(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Question(db.Model):
+    __tablename__ = 'question'
     id = db.Column(db.Integer, primary_key=True)
     question_text = db.Column(db.String(500), nullable=False)
     options = db.Column(db.String(500), nullable=False)
@@ -372,9 +375,20 @@ def init_db():
                 os.makedirs(db_dir)
                 app.logger.info(f"Created database directory: {db_dir}")
             
-            # Initialize the database
+            # Drop all existing tables and recreate them
+            db.drop_all()
             db.create_all()
-            app.logger.info("Database initialized successfully")
+            app.logger.info("Database tables created successfully")
+            
+            # Verify tables exist
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            app.logger.info(f"Available tables: {tables}")
+            
+            if 'test' not in tables:
+                app.logger.error("Test table not found after initialization")
+                raise Exception("Test table not created properly")
+            
     except Exception as e:
         app.logger.error(f"Error initializing database: {str(e)}", exc_info=True)
         raise
