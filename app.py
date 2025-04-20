@@ -46,12 +46,45 @@ os.makedirs(os.path.dirname(db_path), exist_ok=True)
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# Initialize SQLAlchemy
+db = SQLAlchemy(app)
+
+# Initialize database
+def init_db():
+    """Initialize the database"""
+    try:
+        with app.app_context():
+            # Create the database directory if it doesn't exist
+            db_dir = os.path.dirname(app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', ''))
+            if db_dir and not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+                app.logger.info(f"Created database directory: {db_dir}")
+            
+            # Drop all existing tables and recreate them
+            db.drop_all()
+            db.create_all()
+            app.logger.info("Database tables created successfully")
+            
+            # Verify tables exist
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            app.logger.info(f"Available tables: {tables}")
+            
+            if 'test' not in tables:
+                app.logger.error("Test table not found after initialization")
+                raise Exception("Test table not created properly")
+            
+    except Exception as e:
+        app.logger.error(f"Error initializing database: {str(e)}", exc_info=True)
+        raise
+
+# Initialize database before defining routes
+init_db()
+
 # Add fromjson filter to Jinja2
 @app.template_filter('fromjson')
 def fromjson_filter(value):
     return json.loads(value)
-
-db = SQLAlchemy(app)
 
 # Database Models
 class TestQuestion(db.Model):
@@ -364,35 +397,6 @@ def results():
     
     return render_template('results.html', test=test, results=test_results['results'])
 
-# Initialize database
-def init_db():
-    """Initialize the database"""
-    try:
-        with app.app_context():
-            # Create the database directory if it doesn't exist
-            db_dir = os.path.dirname(app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', ''))
-            if db_dir and not os.path.exists(db_dir):
-                os.makedirs(db_dir)
-                app.logger.info(f"Created database directory: {db_dir}")
-            
-            # Drop all existing tables and recreate them
-            db.drop_all()
-            db.create_all()
-            app.logger.info("Database tables created successfully")
-            
-            # Verify tables exist
-            inspector = inspect(db.engine)
-            tables = inspector.get_table_names()
-            app.logger.info(f"Available tables: {tables}")
-            
-            if 'test' not in tables:
-                app.logger.error("Test table not found after initialization")
-                raise Exception("Test table not created properly")
-            
-    except Exception as e:
-        app.logger.error(f"Error initializing database: {str(e)}", exc_info=True)
-        raise
-
 def generate_questions():
     try:
         # Check if we have enough questions in the database
@@ -687,6 +691,9 @@ load_env()
 
 if __name__ == '__main__':
     try:
+        # Load environment variables
+        load_env()
+        
         # Initialize database
         init_db()
         
