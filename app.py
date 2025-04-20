@@ -9,6 +9,7 @@ import logging
 import traceback
 import requests
 from dotenv import load_dotenv
+import secrets
 
 # Load environment variables from .env file
 load_dotenv()
@@ -614,14 +615,42 @@ def get_fallback_questions():
     return question_pool
 
 def load_env():
+    """Load environment variables from .env file if it exists"""
     try:
-        with open('.env', 'r') as f:
-            for line in f:
-                if line.strip() and not line.startswith('#'):
-                    key, value = line.strip().split('=', 1)
-                    os.environ[key] = value
+        # Try to load from .env file first
+        load_dotenv()
+        app.logger.info("Successfully loaded .env file")
     except Exception as e:
-        logging.error(f"Error loading .env file: {str(e)}")
+        # If .env file doesn't exist, that's okay - we'll use environment variables
+        app.logger.info("No .env file found, using environment variables")
+    
+    # Set default values for required environment variables
+    required_vars = {
+        'FLASK_APP': 'app.py',
+        'FLASK_DEBUG': '0',
+        'SECRET_KEY': os.getenv('SECRET_KEY', secrets.token_hex(32)),
+        'DATABASE_URL': os.getenv('DATABASE_URL', 'sqlite:///maths_exam.db'),
+        'OPENROUTER_API_KEY': os.getenv('OPENROUTER_API_KEY'),
+        'PORT': os.getenv('PORT', '5000')
+    }
+    
+    # Check for missing required variables
+    missing_vars = [var for var, value in required_vars.items() if value is None]
+    if missing_vars:
+        app.logger.warning(f"Missing required environment variables: {', '.join(missing_vars)}")
+    
+    # Set Flask configuration
+    app.config['SECRET_KEY'] = required_vars['SECRET_KEY']
+    app.config['SQLALCHEMY_DATABASE_URI'] = required_vars['DATABASE_URL']
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Log configuration (without sensitive values)
+    app.logger.info("Application configuration:")
+    app.logger.info(f"FLASK_APP: {required_vars['FLASK_APP']}")
+    app.logger.info(f"FLASK_DEBUG: {required_vars['FLASK_DEBUG']}")
+    app.logger.info(f"DATABASE_URL: {required_vars['DATABASE_URL']}")
+    app.logger.info(f"PORT: {required_vars['PORT']}")
+    app.logger.info("SECRET_KEY and OPENROUTER_API_KEY are set")
 
 # Load environment variables
 load_env()
