@@ -5,16 +5,17 @@
 {% block content %}
 <div class="container mt-4">
     <h2>Math Test</h2>
-    <form id="testForm" method="POST">
+    <form method="POST" action="{{ url_for('submit_test') }}" id="testForm">
+        <input type="hidden" name="test_id" value="{{ test_id }}">
         {% for question in questions %}
-        <div class="card mb-4">
+        <div class="card mb-3">
             <div class="card-body">
                 <h5 class="card-title">Question {{ loop.index }}</h5>
-                <p class="card-text">{{ question.question }}</p>
+                <p class="card-text">{{ question.question_text }}</p>
                 <div class="options">
                     {% for option in question.options %}
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="q_{{ question.id }}" 
+                        <input class="form-check-input" type="radio" name="answer_{{ question.id }}" 
                                id="q{{ question.id }}_{{ loop.index }}" value="{{ option }}">
                         <label class="form-check-label" for="q{{ question.id }}_{{ loop.index }}">
                             {{ option }}
@@ -43,27 +44,32 @@ document.getElementById('testForm').addEventListener('submit', function(e) {
     questions.forEach((question, index) => {
         const questionId = question.querySelector('input[type="radio"]').name.split('_')[1];
         const selectedOption = question.querySelector('input[type="radio"]:checked');
-        answers[`q_${questionId}`] = selectedOption ? selectedOption.value : null;
+        answers[`answer_${questionId}`] = selectedOption ? selectedOption.value : '';
+    });
+
+    // Add test_id to the form data
+    const formData = new FormData();
+    formData.append('test_id', document.querySelector('input[name="test_id"]').value);
+    
+    // Add answers to form data
+    Object.entries(answers).forEach(([key, value]) => {
+        formData.append(key, value);
     });
 
     // Submit answers to server
     fetch('/submit_test', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ answers: answers })
+        body: formData
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.error) {
-            alert(data.error);
-        } else {
-            // Store results in session storage
-            sessionStorage.setItem('testResults', JSON.stringify(data));
-            // Redirect to results page
-            window.location.href = '/results';
+    .then(response => {
+        if (response.ok) {
+            return response.text();
         }
+        throw new Error('Network response was not ok');
+    })
+    .then(html => {
+        // Replace the current page content with the results
+        document.documentElement.innerHTML = html;
     })
     .catch(error => {
         console.error('Error:', error);

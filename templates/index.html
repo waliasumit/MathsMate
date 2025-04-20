@@ -4,6 +4,16 @@
 
 {% block content %}
 <div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <h1 class="mb-4">Maths Exam</h1>
+            <p class="lead mb-4">Test your math skills with our interactive quiz!</p>
+            <a href="{{ url_for('start_test') }}" class="btn btn-primary btn-lg">
+                Start New Test
+            </a>
+        </div>
+    </div>
+
     <div class="row mb-5">
         <div class="col-md-4">
             <div class="card h-100">
@@ -18,11 +28,8 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <h3 class="card-title">Detailed Answers</h3>
-                    <p class="card-text">Review your previous test answers with explanations.</p>
-                    <form action="{{ url_for('view_test_result') }}" method="post" style="display: inline;">
-                        <input type="hidden" name="test_index" value="0">
-                        <button type="submit" class="btn btn-info">View Answers</button>
-                    </form>
+                    <p class="card-text">Review your test answers with explanations.</p>
+                    <a href="{{ url_for('results') }}" class="btn btn-info">View Answers</a>
                 </div>
             </div>
         </div>
@@ -31,67 +38,7 @@
                 <div class="card-body text-center">
                     <h3 class="card-title">Track Progress</h3>
                     <p class="card-text">Monitor your performance over time.</p>
-                    <form action="{{ url_for('view_test_result') }}" method="post" style="display: inline;">
-                        <input type="hidden" name="test_index" value="0">
-                        <button type="submit" class="btn btn-success">View Progress</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-md-8 mx-auto">
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="text-center">Test History</h2>
-                </div>
-                <div class="card-body">
-                    {% if session.get('test_history') %}
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Score</th>
-                                        <th>Questions</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for test in session.get('test_history', [])|reverse %}
-                                    <tr>
-                                        <td>{{ test.date }}</td>
-                                        <td>
-                                            <div class="d-flex align-items-center">
-                                                <div class="progress flex-grow-1 me-2" style="height: 20px;">
-                                                    <div class="progress-bar {% if test.percentage >= 70 %}bg-success{% elif test.percentage >= 50 %}bg-warning{% else %}bg-danger{% endif %}"
-                                                         role="progressbar"
-                                                         style="width: {{ test.percentage }}%"
-                                                         aria-valuenow="{{ test.percentage }}"
-                                                         aria-valuemin="0"
-                                                         aria-valuemax="100">
-                                                        {{ test.percentage }}%
-                                                    </div>
-                                                </div>
-                                                <span class="ms-2">{{ test.score }}/{{ test.total }}</span>
-                                            </div>
-                                        </td>
-                                        <td>{{ test.answered }}/{{ test.total }}</td>
-                                        <td>
-                                            <form action="{{ url_for('view_test_result') }}" method="post" style="display: inline;">
-                                                <input type="hidden" name="test_index" value="{{ loop.index0 }}">
-                                                <button type="submit" class="btn btn-sm btn-info">View Details</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% else %}
-                        <p class="text-center">No test history available.</p>
-                    {% endif %}
+                    <a href="{{ url_for('results') }}" class="btn btn-success">View Progress</a>
                 </div>
             </div>
         </div>

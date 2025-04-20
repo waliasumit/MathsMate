@@ -8,6 +8,10 @@ import random
 import logging
 import traceback
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging for production
 if os.environ.get('FLASK_ENV') == 'production':
@@ -32,77 +36,32 @@ else:
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev')
-
-# Database configuration
-if os.environ.get('FLASK_ENV') == 'production':
-    # Use PostgreSQL on Render
-    database_url = os.environ.get('DATABASE_URL')
-    if database_url and database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///math_exam.db'
-else:
-    # Use SQLite for development
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///math_exam.db'
-
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///maths_exam.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# OpenRouter API configuration
-OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-# Debug logging for API key
-if OPENROUTER_API_KEY:
-    logger.info("OpenRouter API key found in environment variables")
-    # Log first 4 characters and last 4 characters of the key for security
-    masked_key = OPENROUTER_API_KEY[:4] + "..." + OPENROUTER_API_KEY[-4:]
-    logger.info(f"API key (masked): {masked_key}")
-    logger.info(f"API key length: {len(OPENROUTER_API_KEY)}")
-else:
-    logger.warning("OpenRouter API key not found in environment variables")
-    logger.warning("Please set OPENROUTER_API_KEY environment variable")
-
-# File paths for storing data
-QUESTIONS_FILE = 'questions.json'
-TEST_HISTORY_FILE = 'test_history.json'
-
-def load_questions():
-    if os.path.exists(QUESTIONS_FILE):
-        with open(QUESTIONS_FILE, 'r') as f:
-            return json.load(f)
-    return []
-
-def save_questions(questions):
-    with open(QUESTIONS_FILE, 'w') as f:
-        json.dump(questions, f)
-
-def load_test_history():
-    if os.path.exists(TEST_HISTORY_FILE):
-        with open(TEST_HISTORY_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-def save_test_history(history):
-    with open(TEST_HISTORY_FILE, 'w') as f:
-        json.dump(history, f)
-
-# Add custom Jinja2 filter for JSON handling
+# Add fromjson filter to Jinja2
 @app.template_filter('fromjson')
 def fromjson_filter(value):
-    if value is None:
-        return []
     return json.loads(value)
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
 # Database Models
+class TestQuestion(db.Model):
+    __tablename__ = 'test_questions'
+    test_id = db.Column(db.Integer, db.ForeignKey('test.id'), primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey('question.id'), primary_key=True)
+    test = db.relationship('Test', backref=db.backref('test_questions', lazy=True))
+    question = db.relationship('Question', backref=db.backref('test_questions', lazy=True))
+
 class Test(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     score = db.Column(db.Integer, nullable=False)
     total_questions = db.Column(db.Integer, nullable=False)
     percentage = db.Column(db.Float, nullable=False)
-    questions_used = db.Column(db.String(500), nullable=False)  # Store as JSON string
+    completed = db.Column(db.Boolean, default=False)
+    questions_used = db.Column(db.Text)  # Store as JSON string
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Question(db.Model):
@@ -133,87 +92,201 @@ def not_found_error(error):
 def index():
     return render_template('index.html')
 
-@app.route('/start_test')
+@app.route('/start_test', methods=['GET'])
 def start_test():
-    questions = generate_questions()
-    # Store questions in session
-    session['current_test'] = {
-        'questions': questions,
-        'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    }
-    return render_template('test.html', questions=questions)
+    try:
+        # Generate or get questions
+        questions = generate_questions()
+        
+        # Create a new test with required fields
+        test = Test(
+            score=0,
+            total_questions=len(questions),
+            percentage=0.0,
+            completed=False,
+            questions_used=json.dumps([])  # Initialize with empty list
+        )
+        db.session.add(test)
+        db.session.commit()
+        
+        # Add questions to the test
+        for q in questions:
+            # If the question is from the database, it will have an id
+            # If it's newly generated, we need to save it first
+            if 'id' not in q:
+                question = Question(
+                    question_text=q['question'],
+                    options=json.dumps(q['options']),
+                    correct_answer=q['correct_answer'],
+                    explanation=q['explanation']
+                )
+                db.session.add(question)
+                db.session.commit()
+                q['id'] = question.id
+            
+            test_question = TestQuestion(test_id=test.id, question_id=q['id'])
+            db.session.add(test_question)
+            
+            # Update questions_used list
+            questions_used = json.loads(test.questions_used)
+            questions_used.append(q['id'])
+            test.questions_used = json.dumps(questions_used)
+        
+        db.session.commit()
+        
+        # Get the questions with their IDs for the template
+        test_questions = TestQuestion.query.filter_by(test_id=test.id).all()
+        questions_with_ids = []
+        for tq in test_questions:
+            question = Question.query.get(tq.question_id)
+            questions_with_ids.append({
+                'id': question.id,
+                'question_text': question.question_text,
+                'options': json.loads(question.options),
+                'correct_answer': question.correct_answer,
+                'explanation': question.explanation
+            })
+        
+        return render_template('test.html', test_id=test.id, questions=questions_with_ids)
+        
+    except Exception as e:
+        app.logger.error(f"Error in start_test: {str(e)}", exc_info=True)
+        return "An error occurred while starting the test. Please try again.", 500
 
 @app.route('/submit_test', methods=['POST'])
 def submit_test():
     try:
+        # Get test ID from form
+        test_id = request.form.get('test_id')
+        if not test_id:
+            app.logger.error("No test_id provided in form data")
+            return "Test ID not provided", 400
+            
+        app.logger.info(f"Processing submission for test {test_id}")
+        
+        # Get test from database
+        test = Test.query.get(test_id)
+        if not test:
+            app.logger.error(f"Test {test_id} not found in database")
+            return "Test not found", 404
+            
         # Get answers from form
         answers = {}
         for key, value in request.form.items():
             if key.startswith('answer_'):
                 question_id = key.replace('answer_', '')
-                answers[question_id] = value
-        
-        # Get questions from session
-        questions = session.get('current_test', {}).get('questions', [])
-        if not questions:
-            flash('No test questions found. Please start a new test.', 'error')
-            return redirect(url_for('index'))
+                try:
+                    answers[int(question_id)] = value
+                except ValueError as e:
+                    app.logger.error(f"Error converting answer for question {question_id}: {str(e)}")
+                    return f"Invalid answer format for question {question_id}", 400
+                    
+        app.logger.info(f"Collected answers: {answers}")
         
         # Calculate score
         score = 0
-        for question in questions:
-            question_id = str(question['id'])
-            if question_id in answers and answers[question_id] == question['correct_answer']:
+        results = {}
+        
+        # Get all questions for this test through TestQuestion relationship
+        test_questions = TestQuestion.query.filter_by(test_id=test.id).all()
+        for tq in test_questions:
+            question = tq.question
+            user_answer = answers.get(question.id)
+            
+            # Detailed logging for debugging
+            app.logger.debug("="*50)
+            app.logger.debug(f"Question ID: {question.id}")
+            app.logger.debug(f"Question text: {question.question_text}")
+            app.logger.debug(f"Raw user answer: {user_answer}")
+            app.logger.debug(f"Raw correct answer: {question.correct_answer}")
+            app.logger.debug(f"User answer type: {type(user_answer)}")
+            app.logger.debug(f"Correct answer type: {type(question.correct_answer)}")
+            
+            # Get the options for this question
+            options = json.loads(question.options)
+            app.logger.debug(f"Options: {options}")
+            
+            # Convert both answers to strings and strip whitespace for comparison
+            user_answer_str = str(user_answer).strip() if user_answer else None
+            correct_answer_str = str(question.correct_answer).strip()
+            
+            app.logger.debug(f"Raw correct answer: '{correct_answer_str}'")
+            app.logger.debug(f"Raw correct answer type: {type(correct_answer_str)}")
+            
+            # Extract the option letter from the correct answer (e.g., "A) 50" -> "A")
+            correct_option_letter = correct_answer_str.split(')')[0].strip()
+            app.logger.debug(f"Correct option letter: '{correct_option_letter}'")
+            
+            # Convert option letters to indices (A->0, B->1, C->2, D->3)
+            option_letter_to_index = {'A': 0, 'B': 1, 'C': 2, 'D': 3}
+            
+            # Get the correct answer index
+            correct_answer_index = option_letter_to_index.get(correct_option_letter)
+            
+            # Get the user's answer index by finding the selected option in the options array
+            user_answer_index = None
+            if user_answer_str:
+                # Find the index of the user's selected option in the options array
+                for i, option in enumerate(options):
+                    if str(option).strip() == user_answer_str:
+                        user_answer_index = i
+                        break
+            
+            app.logger.debug("="*50)
+            app.logger.debug(f"Question ID: {question.id}")
+            app.logger.debug(f"Question text: {question.question_text}")
+            app.logger.debug(f"Options array: {options}")
+            app.logger.debug(f"Correct answer string: '{correct_answer_str}'")
+            app.logger.debug(f"Extracted correct option letter: '{correct_option_letter}'")
+            app.logger.debug(f"Correct answer index: {correct_answer_index}")
+            app.logger.debug(f"User's selected option: '{user_answer_str}'")
+            app.logger.debug(f"User's answer index: {user_answer_index}")
+            app.logger.debug("="*50)
+            
+            # Compare the user's answer index with the correct answer index
+            correct = user_answer_index is not None and user_answer_index == correct_answer_index
+            app.logger.debug(f"Is correct: {correct}")
+            
+            if correct:
                 score += 1
+            results[question.id] = {
+                'question': question.question_text,
+                'user_answer': options[user_answer_index] if user_answer_index is not None else "Not answered",
+                'correct_answer': question.correct_answer,
+                'is_correct': correct,
+                'explanation': question.explanation
+            }
+            
+        app.logger.info(f"Calculated score: {score}/{len(test_questions)}")
         
-        # Calculate percentage
-        total_questions = len(questions)
-        percentage = (score / total_questions) * 100 if total_questions > 0 else 0
+        # Update test with score
+        test.score = score
+        test.percentage = (score / len(test_questions)) * 100
+        test.completed = True
         
-        # Store test results
-        test = Test(
-            score=score,
-            total_questions=total_questions,
-            percentage=percentage,
-            questions_used=json.dumps([q['id'] for q in questions])
-        )
-        db.session.add(test)
-        db.session.commit()
-        
-        # Prepare results for display
-        results = {
+        try:
+            db.session.commit()
+            app.logger.info("Successfully updated test in database")
+        except Exception as e:
+            app.logger.error(f"Database error while updating test: {str(e)}")
+            db.session.rollback()
+            return "Error saving test results", 500
+            
+        # Save test results to session
+        session['test_results'] = {
+            'test_id': test.id,
             'score': score,
-            'total_questions': total_questions,
-            'percentage': percentage,
-            'questions': questions,
-            'answers': answers
+            'total_questions': len(test_questions),
+            'percentage': test.percentage,
+            'timestamp': test.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'results': results
         }
         
-        # Store test history
-        test_history = load_test_history()
-        if request.remote_addr not in test_history:
-            test_history[request.remote_addr] = []
+        return render_template('results.html', test=test, results=results)
         
-        test_history[request.remote_addr].append({
-            'timestamp': datetime.now().isoformat(),
-            'score': score,
-            'total_questions': total_questions,
-            'questions_used': [q['id'] for q in questions]
-        })
-        
-        # Keep only the last 5 tests per user
-        test_history[request.remote_addr] = test_history[request.remote_addr][-5:]
-        save_test_history(test_history)
-        
-        # Clear session data
-        session.pop('current_test', None)
-        
-        return render_template('results.html', results=results)
     except Exception as e:
-        logger.error(f"Error submitting test: {str(e)}")
-        logger.error(traceback.format_exc())
-        flash('An error occurred while submitting your test. Please try again.', 'error')
-        return redirect(url_for('index'))
+        app.logger.error(f"Unexpected error in submit_test: {str(e)}", exc_info=True)
+        return "An error occurred while submitting the test", 500
 
 @app.route('/results')
 def results():
@@ -223,198 +296,144 @@ def results():
         flash('No test results found.', 'error')
         return redirect(url_for('start_test'))
     
-    return render_template('results.html', results=test_results)
-
-@app.route('/view_test_result', methods=['POST'])
-def view_test_result():
-    # Get the test index from the form
-    test_index = request.form.get('test_index')
-    if test_index is None:
-        flash('No test index provided', 'error')
+    # Get the test from the database
+    test = Test.query.get(test_results['test_id'])
+    if test is None:
+        flash('Test not found in database', 'error')
         return redirect(url_for('index'))
     
-    # Get test history from session
-    test_history = session.get('test_history', [])
-    try:
-        test_index = int(test_index)
-        if 0 <= test_index < len(test_history):
-            session['test_results'] = test_history[test_index]
-            return redirect(url_for('results'))
-        else:
-            flash('Invalid test index', 'error')
-    except ValueError:
-        flash('Invalid test index format', 'error')
-    
-    return redirect(url_for('index'))
+    return render_template('results.html', test=test, results=test_results['results'])
 
+# Initialize database
 def init_db():
-    """Initialize the database and create tables"""
-    try:
-        with app.app_context():
-            # Drop all existing tables
-            db.drop_all()
-            logger.info("Dropped all existing tables")
-            
-            # Create all tables
-            db.create_all()
-            logger.info("Created all tables successfully")
-            
-            # Verify tables were created
-            inspector = db.inspect(db.engine)
-            table_names = inspector.get_table_names()
-            logger.info(f"Tables after creation: {table_names}")
-            
-            if 'question' not in table_names:
-                raise Exception("Failed to create question table")
-    except Exception as e:
-        logger.error(f"Error initializing database: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise
-
-# Initialize database when the application starts
-init_db()
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+        app.logger.info("Database initialized successfully")
 
 def generate_questions():
     try:
-        # Ensure database is initialized
-        with app.app_context():
-            try:
-                # Verify question table exists
-                inspector = db.inspect(db.engine)
-                if 'question' not in inspector.get_table_names():
-                    logger.warning("Question table not found, reinitializing database")
-                    init_db()
-            except Exception as e:
-                logger.error(f"Error verifying database: {str(e)}")
-                return get_fallback_questions()
-        
         # Check if we have enough questions in the database
         existing_questions = Question.query.all()
-        logger.info(f"Current number of questions in database: {len(existing_questions)}")
-        
         if len(existing_questions) >= 10:
-            # Get all question IDs that have been used in any previous tests
-            used_question_ids = set()
-            test_history = load_test_history()
-            for user_tests in test_history.values():
-                for test in user_tests:
-                    used_question_ids.update(test.get('questions_used', []))
-            
-            # Filter out questions that have been used
-            available_questions = [q for q in existing_questions if q.id not in used_question_ids]
-            logger.info(f"Number of unused questions available: {len(available_questions)}")
-            
-            if len(available_questions) >= 10:
-                # Select 10 random questions from available ones
-                selected_questions = random.sample(available_questions, 10)
-                return [{
-                    'id': q.id,
-                    'question': q.question_text,
-                    'options': json.loads(q.options),
-                    'correct_answer': q.correct_answer,
-                    'difficulty': q.difficulty,
-                    'explanation': q.explanation
-                } for q in selected_questions]
-        
-        # If we need more questions, generate them using OpenRouter
-        if not OPENROUTER_API_KEY:
-            logger.warning("No OpenRouter API key available, using fallback questions")
+            # Select 10 random questions
+            selected_questions = random.sample(existing_questions, 10)
+            return [{
+                'id': q.id,
+                'question': q.question_text,
+                'options': json.loads(q.options),
+                'correct_answer': q.correct_answer,
+                'explanation': q.explanation
+            } for q in selected_questions]
+
+        # If not enough questions, generate new ones using OpenRouter
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        if not api_key:
+            app.logger.warning("Please set OPENROUTER_API_KEY environment variable")
             return get_fallback_questions()
-        
-        logger.info("Generating new questions using OpenRouter API")
-        logger.info(f"Using model: deepseek/deepseek-chat-v3-0324:free")
+
+        app.logger.info("OpenRouter API key found in environment variables")
+        app.logger.info(f"API key (masked): {api_key[:3]}...{api_key[-4:]}")
+
         headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "HTTP-Referer": "https://github.com/waliasumit/MathsMate",
-            "X-Title": "Maths Exam App"
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'http://localhost:5000',
+            'X-Title': 'Maths Exam'
         }
-        
+
         data = {
-            "model": "deepseek/deepseek-chat-v3-0324:free",
-            "messages": [
-                {"role": "system", "content": "You are an experienced math teacher creating challenging and engaging questions."},
-                {"role": "user", "content": """Generate 20 math questions for Year 9 students. Each question should be in JSON format with:
-                - question: The math problem
-                - options: Array of 4 possible answers
-                - correct_answer: The correct answer
-                - difficulty: easy/medium/hard
-                - explanation: Step-by-step solution
-                Return only the JSON array, no other text."""}
-            ]
+            'model': 'deepseek/deepseek-r1:free',
+            'messages': [{
+                'role': 'user',
+                'content': '''Generate 10 multiple choice math questions for grade 5 students. 
+                Each question should have 4 options (A, B, C, D) and include an explanation.
+                Format each question as a JSON object with these fields:
+                - question: The question text
+                - options: Array of 4 options [A, B, C, D]
+                - correct_answer: The correct option (A, B, C, or D)
+                - explanation: Explanation of the solution
+                Return ONLY the JSON array, with no additional text or explanation.'''
+            }]
         }
-        
-        logger.info(f"Making API request to OpenRouter: {OPENROUTER_API_URL}")
-        logger.info(f"Request headers: {headers}")
-        logger.info(f"Request data: {data}")
-        
-        response = requests.post(OPENROUTER_API_URL, headers=headers, json=data)
-        logger.info(f"API response status code: {response.status_code}")
-        logger.info(f"API response headers: {response.headers}")
-        
+
+        app.logger.debug(f"API request data: {json.dumps(data, indent=2)}")
+
+        response = requests.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            headers=headers,
+            json=data
+        )
+
+        app.logger.debug(f"API response status code: {response.status_code}")
+        app.logger.debug(f"API response headers: {response.headers}")
+        app.logger.debug(f"API response text: {response.text}")
+
         if response.status_code == 200:
-            result = response.json()
-            logger.info(f"Successfully received response from OpenRouter API")
-            logger.info(f"Model used: {result.get('model', 'Unknown')}")
-            logger.info(f"Provider: {result.get('provider', 'Unknown')}")
-            
             try:
+                response_data = response.json()
+                app.logger.debug(f"Raw API response: {json.dumps(response_data, indent=2)}")
+                
+                # Check if response has the expected structure
+                if 'choices' not in response_data or not response_data['choices']:
+                    app.logger.error("Invalid API response structure: missing 'choices'")
+                    app.logger.error(f"Response keys: {response_data.keys()}")
+                    app.logger.error(f"Full response: {json.dumps(response_data, indent=2)}")
+                    return get_fallback_questions()
+                
                 # Extract the generated text from the response
-                generated_text = result['choices'][0]['message']['content']
-                logger.info(f"Successfully extracted generated text from response")
+                generated_text = response_data['choices'][0]['message']['content']
+                app.logger.debug(f"Generated text: {generated_text}")
                 
-                # Extract JSON from the generated text
-                json_str = generated_text.split('```json')[1].split('```')[0].strip()
-                questions = json.loads(json_str)
-                logger.info(f"Successfully parsed {len(questions)} questions from response")
+                # Try to find JSON array in the text
+                try:
+                    # First try to parse the entire text as JSON
+                    questions = json.loads(generated_text)
+                except json.JSONDecodeError:
+                    # If that fails, try to extract JSON from between ```json and ```
+                    if '```json' in generated_text and '```' in generated_text:
+                        json_str = generated_text.split('```json')[1].split('```')[0].strip()
+                        questions = json.loads(json_str)
+                    else:
+                        # If no JSON markers, try to find the first [ and last ]
+                        start = generated_text.find('[')
+                        end = generated_text.rfind(']')
+                        if start != -1 and end != -1:
+                            json_str = generated_text[start:end+1]
+                            questions = json.loads(json_str)
+                        else:
+                            raise json.JSONDecodeError("No JSON array found in response", generated_text, 0)
                 
-                # Store questions in database
+                app.logger.info(f"Successfully generated {len(questions)} questions")
+                
+                # Save questions to database
                 for q in questions:
                     question = Question(
                         question_text=q['question'],
                         options=json.dumps(q['options']),
                         correct_answer=q['correct_answer'],
-                        difficulty=q.get('difficulty', 'medium'),
                         explanation=q['explanation']
                     )
                     db.session.add(question)
                 
                 db.session.commit()
-                logger.info(f"Added {len(questions)} new questions to database")
+                return questions
                 
-                # Select 10 random questions
-                selected_questions = random.sample(questions, min(10, len(questions)))
-                return [{
-                    'id': Question.query.filter_by(question_text=q['question']).first().id,
-                    'question': q['question'],
-                    'options': q['options'],
-                    'correct_answer': q['correct_answer'],
-                    'difficulty': q.get('difficulty', 'medium'),
-                    'explanation': q['explanation']
-                } for q in selected_questions]
-                
-            except (KeyError, IndexError, json.JSONDecodeError) as e:
-                logger.error(f"Error parsing API response: {str(e)}")
-                logger.error(f"Response content: {response.text}")
+            except json.JSONDecodeError as e:
+                app.logger.error(f"Error parsing generated text: {str(e)}")
+                app.logger.error(f"Generated text that failed to parse: {generated_text}")
                 return get_fallback_questions()
-                
-        elif response.status_code == 402:
-            logger.error("Payment required for OpenRouter API")
-            return get_fallback_questions()
-        elif response.status_code == 401:
-            logger.error("Invalid OpenRouter API key")
-            return get_fallback_questions()
-        elif response.status_code == 404:
-            logger.error("OpenRouter API endpoint not found")
-            return get_fallback_questions()
+            except Exception as e:
+                app.logger.error(f"Error processing API response: {str(e)}")
+                app.logger.error(f"Full response: {json.dumps(response_data, indent=2)}")
+                return get_fallback_questions()
         else:
-            logger.error(f"OpenRouter API error: {response.status_code} - {response.text}")
+            app.logger.error(f"API request failed with status {response.status_code}")
+            app.logger.error(f"Response: {response.text}")
             return get_fallback_questions()
-            
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Network error while calling OpenRouter API: {str(e)}")
-        return get_fallback_questions()
+
     except Exception as e:
-        logger.error(f"Unexpected error in generate_questions: {str(e)}")
+        app.logger.error(f"Unexpected error in generate_questions: {str(e)}", exc_info=True)
         return get_fallback_questions()
 
 def get_fallback_questions():
@@ -497,15 +516,23 @@ def get_fallback_questions():
     # Return all 10 questions
     return question_pool
 
-if __name__ == '__main__':
+def load_env():
     try:
-        # Initialize database
-        init_db()
-        
-        # Start the application
-        port = int(os.environ.get('PORT', 5000))
-        app.run(host='0.0.0.0', port=port)
+        with open('.env', 'r') as f:
+            for line in f:
+                if line.strip() and not line.startswith('#'):
+                    key, value = line.strip().split('=', 1)
+                    os.environ[key] = value
     except Exception as e:
-        logger.error(f"Failed to start application: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise 
+        logging.error(f"Error loading .env file: {str(e)}")
+
+# Load environment variables
+load_env()
+
+if __name__ == '__main__':
+    # Initialize database
+    init_db()
+    
+    # Start the application
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port) 
