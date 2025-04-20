@@ -38,7 +38,11 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///maths_exam.db'
+
+# Configure database path for Render
+db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance', 'maths_exam.db')
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Add fromjson filter to Jinja2
@@ -125,6 +129,7 @@ def start_test():
             app.logger.info(f"Created new test with ID: {test.id}")
         except Exception as e:
             app.logger.error(f"Error creating test: {str(e)}", exc_info=True)
+            db.session.rollback()
             flash('An error occurred while creating the test. Please try again.', 'error')
             return redirect(url_for('index'))
         
@@ -358,10 +363,21 @@ def results():
 
 # Initialize database
 def init_db():
-    with app.app_context():
-        db.drop_all()
-        db.create_all()
-        app.logger.info("Database initialized successfully")
+    """Initialize the database"""
+    try:
+        with app.app_context():
+            # Create the database directory if it doesn't exist
+            db_dir = os.path.dirname(app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', ''))
+            if db_dir and not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+                app.logger.info(f"Created database directory: {db_dir}")
+            
+            # Initialize the database
+            db.create_all()
+            app.logger.info("Database initialized successfully")
+    except Exception as e:
+        app.logger.error(f"Error initializing database: {str(e)}", exc_info=True)
+        raise
 
 def generate_questions():
     try:
@@ -656,9 +672,13 @@ def load_env():
 load_env()
 
 if __name__ == '__main__':
-    # Initialize database
-    init_db()
-    
-    # Start the application
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port) 
+    try:
+        # Initialize database
+        init_db()
+        
+        # Start the application
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port)
+    except Exception as e:
+        app.logger.error(f"Error starting application: {str(e)}", exc_info=True)
+        raise 
