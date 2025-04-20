@@ -52,10 +52,10 @@ db = SQLAlchemy(app)
 # Database Models
 class TestQuestion(db.Model):
     __tablename__ = 'test_questions'
-    test_id = db.Column(db.Integer, db.ForeignKey('test.id'), primary_key=True)
-    question_id = db.Column(db.Integer, db.ForeignKey('question.id'), primary_key=True)
-    test = db.relationship('Test', backref=db.backref('test_questions', lazy=True))
-    question = db.relationship('Question', backref=db.backref('test_questions', lazy=True))
+    test_id = db.Column(db.Integer, db.ForeignKey('test.id', ondelete='CASCADE'), primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey('question.id', ondelete='CASCADE'), primary_key=True)
+    test = db.relationship('Test', backref=db.backref('test_questions', lazy=True, cascade='all, delete-orphan'))
+    question = db.relationship('Question', backref=db.backref('test_questions', lazy=True, cascade='all, delete-orphan'))
 
 class Test(db.Model):
     __tablename__ = 'test'
@@ -66,6 +66,7 @@ class Test(db.Model):
     completed = db.Column(db.Boolean, default=False)
     questions_used = db.Column(db.Text)  # Store as JSON string
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    questions = db.relationship('Question', secondary='test_questions', backref=db.backref('tests', lazy=True))
 
 class Question(db.Model):
     __tablename__ = 'question'
@@ -89,29 +90,22 @@ def init_db():
                 os.makedirs(db_dir)
                 app.logger.info(f"Created database directory: {db_dir}")
             
-            # Check if tables already exist
-            inspector = inspect(db.engine)
-            existing_tables = inspector.get_table_names()
-            
-            required_tables = ['test', 'question', 'test_questions']
-            missing_tables = [table for table in required_tables if table not in existing_tables]
-            
-            if missing_tables:
-                app.logger.info(f"Creating missing tables: {', '.join(missing_tables)}")
-                db.create_all()
-                app.logger.info("Database tables created successfully")
-            else:
-                app.logger.info("All required tables already exist")
+            # Always drop and recreate tables to ensure clean state
+            db.drop_all()
+            db.create_all()
+            app.logger.info("Database tables created successfully")
             
             # Verify tables exist
+            inspector = inspect(db.engine)
             tables = inspector.get_table_names()
             app.logger.info(f"Available tables: {tables}")
             
+            required_tables = ['test', 'question', 'test_questions']
+            missing_tables = [table for table in required_tables if table not in tables]
+            
             if missing_tables:
-                missing_tables = [table for table in required_tables if table not in tables]
-                if missing_tables:
-                    app.logger.error(f"Missing required tables: {', '.join(missing_tables)}")
-                    raise Exception(f"Database tables not created properly. Missing: {', '.join(missing_tables)}")
+                app.logger.error(f"Missing required tables: {', '.join(missing_tables)}")
+                raise Exception(f"Database tables not created properly. Missing: {', '.join(missing_tables)}")
             
             app.logger.info("Database initialization completed successfully")
             
