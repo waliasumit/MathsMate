@@ -346,8 +346,15 @@ def generate_questions():
             'model': 'deepseek/deepseek-r1:free',
             'messages': [{
                 'role': 'user',
-                'content': '''Generate 10 multiple choice math questions for grade 5 students. 
+                'content': '''Generate 10 multiple choice math questions for grade 7/8 students. 
                 Each question should have 4 options (A, B, C, D) and include an explanation.
+                Questions should cover topics like:
+                - Algebra (linear equations, expressions)
+                - Geometry (angles, area, volume)
+                - Statistics and probability
+                - Ratios and proportions
+                - Percentages and interest
+                - Basic trigonometry
                 Format each question as a JSON object with these fields:
                 - question: The question text
                 - options: Array of 4 options [A, B, C, D]
@@ -439,77 +446,77 @@ def generate_questions():
 def get_fallback_questions():
     """Return a set of predefined questions when API generation fails"""
     logger.info("Using fallback questions")
-    # Fallback question pool with more advanced questions
+    # Fallback question pool with grade 7/8 level questions
     question_pool = [
         {
             "id": 1,
-            "question": "Solve for x: 3x - 7 = 14",
-            "options": ["7", "21", "9", "11"],
+            "question": "Solve for x: 2(3x - 5) = 4x + 8",
+            "options": ["9", "7", "5", "3"],
             "correct_answer": 0,
-            "explanation": "To solve 3x - 7 = 14:\n1. Add 7 to both sides: 3x = 21\n2. Divide both sides by 3: x = 7"
+            "explanation": "To solve 2(3x - 5) = 4x + 8:\n1. Distribute: 6x - 10 = 4x + 8\n2. Subtract 4x: 2x - 10 = 8\n3. Add 10: 2x = 18\n4. Divide by 2: x = 9"
         },
         {
             "id": 2,
-            "question": "What is the next number in the sequence: 2, 5, 10, 17, 26, ...?",
-            "options": ["35", "37", "39", "41"],
-            "correct_answer": 1,
-            "explanation": "The pattern is adding consecutive odd numbers:\n2 + 3 = 5\n5 + 5 = 10\n10 + 7 = 17\n17 + 9 = 26\n26 + 11 = 37"
+            "question": "What is the volume of a cylinder with radius 4 cm and height 10 cm? (Use π = 3.14)",
+            "options": ["502.4 cm³", "401.92 cm³", "314 cm³", "251.2 cm³"],
+            "correct_answer": 0,
+            "explanation": "Volume of cylinder = πr²h\n= 3.14 × 4² × 10\n= 3.14 × 16 × 10\n= 502.4 cm³"
         },
         {
             "id": 3,
-            "question": "A rectangle has a length of 12 cm and a width of 8 cm. What is its area?",
-            "options": ["96 cm²", "84 cm²", "72 cm²", "64 cm²"],
-            "correct_answer": 0,
-            "explanation": "Area of rectangle = length × width\n= 12 cm × 8 cm = 96 cm²"
+            "question": "If a number is increased by 25% and then decreased by 20%, what is the net percentage change?",
+            "options": ["No change", "5% increase", "5% decrease", "10% increase"],
+            "correct_answer": 1,
+            "explanation": "Let the number be 100\nAfter 25% increase: 100 + 25 = 125\nAfter 20% decrease: 125 - 25 = 100\nNet change = (100 - 100)/100 × 100 = 0%"
         },
         {
             "id": 4,
-            "question": "If a number is increased by 20% and then decreased by 20%, what is the net change?",
-            "options": ["No change", "4% decrease", "4% increase", "20% decrease"],
-            "correct_answer": 1,
-            "explanation": "Let the number be 100\nAfter 20% increase: 100 + 20 = 120\nAfter 20% decrease: 120 - 24 = 96\nNet change = (100 - 96)/100 × 100 = 4% decrease"
+            "question": "What is the probability of rolling two dice and getting a sum of 8?",
+            "options": ["5/36", "1/6", "1/9", "1/12"],
+            "correct_answer": 0,
+            "explanation": "Total possible outcomes = 6 × 6 = 36\nFavorable outcomes for sum 8: (2,6), (3,5), (4,4), (5,3), (6,2) = 5\nProbability = 5/36"
         },
         {
             "id": 5,
-            "question": "What is the probability of rolling a sum of 7 with two dice?",
-            "options": ["1/6", "1/12", "1/36", "1/4"],
+            "question": "A right triangle has legs of 6 cm and 8 cm. What is the length of the hypotenuse?",
+            "options": ["10 cm", "12 cm", "14 cm", "16 cm"],
             "correct_answer": 0,
-            "explanation": "Total possible outcomes = 6 × 6 = 36\nFavorable outcomes for sum 7: (1,6), (2,5), (3,4), (4,3), (5,2), (6,1) = 6\nProbability = 6/36 = 1/6"
+            "explanation": "Using Pythagorean theorem: a² + b² = c²\n6² + 8² = c²\n36 + 64 = c²\n100 = c²\nc = 10 cm"
         },
         {
             "id": 6,
-            "question": "A train travels 300 km in 4 hours. What is its average speed?",
-            "options": ["75 km/h", "80 km/h", "85 km/h", "90 km/h"],
+            "question": "If 3x + 2y = 12 and x - y = 2, what is the value of y?",
+            "options": ["1.2", "1.5", "1.8", "2.0"],
             "correct_answer": 0,
-            "explanation": "Average speed = Total distance / Total time\n= 300 km / 4 hours = 75 km/h"
+            "explanation": "From x - y = 2, we get x = y + 2\nSubstitute in first equation: 3(y + 2) + 2y = 12\n3y + 6 + 2y = 12\n5y = 6\ny = 1.2"
         },
         {
             "id": 7,
-            "question": "If 2x + 3y = 12 and x - y = 1, what is the value of x?",
-            "options": ["3", "4", "5", "6"],
+            "question": "What is the surface area of a cube with edge length 5 cm?",
+            "options": ["150 cm²", "125 cm²", "100 cm²", "75 cm²"],
             "correct_answer": 0,
-            "explanation": "From x - y = 1, we get y = x - 1\nSubstitute in first equation: 2x + 3(x - 1) = 12\n5x - 3 = 12\n5x = 15\nx = 3"
+            "explanation": "Surface area of cube = 6 × (edge length)²\n= 6 × 5²\n= 6 × 25\n= 150 cm²"
         },
         {
             "id": 8,
-            "question": "What is the area of a circle with radius 7 cm? (Use π = 22/7)",
-            "options": ["154 cm²", "147 cm²", "140 cm²", "133 cm²"],
+            "question": "A shop offers a 20% discount on a $150 item, plus an additional 10% off the discounted price. What is the final price?",
+            "options": ["$108", "$105", "$102", "$99"],
             "correct_answer": 0,
-            "explanation": "Area of circle = πr²\n= (22/7) × 7 × 7\n= 22 × 7\n= 154 cm²"
+            "explanation": "First discount: $150 × 0.20 = $30\nPrice after first discount: $150 - $30 = $120\nSecond discount: $120 × 0.10 = $12\nFinal price: $120 - $12 = $108"
         },
         {
             "id": 9,
-            "question": "A shop offers a 15% discount on a $200 item. What is the final price?",
-            "options": ["$170", "$175", "$180", "$185"],
+            "question": "What is the value of sin(30°) × cos(60°)?",
+            "options": ["0.25", "0.5", "0.75", "1.0"],
             "correct_answer": 0,
-            "explanation": "Discount amount = 15% of $200 = $30\nFinal price = $200 - $30 = $170"
+            "explanation": "sin(30°) = 0.5\ncos(60°) = 0.5\n0.5 × 0.5 = 0.25"
         },
         {
             "id": 10,
-            "question": "What is the value of 2³ + 3²?",
-            "options": ["17", "18", "19", "20"],
+            "question": "If the ratio of boys to girls in a class is 3:2 and there are 30 students, how many girls are there?",
+            "options": ["12", "15", "18", "20"],
             "correct_answer": 0,
-            "explanation": "2³ = 8 and 3² = 9\n8 + 9 = 17"
+            "explanation": "Let the number of boys be 3x and girls be 2x\n3x + 2x = 30\n5x = 30\nx = 6\nNumber of girls = 2x = 12"
         }
     ]
     
