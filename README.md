@@ -65,12 +65,12 @@ flask run
 2. Connect your GitHub repository
 3. Configure the following settings:
    - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn app:app`
+   - Start Command: `gunicorn --config gunicorn_config.py app:app`
 4. Add the following Environment Variables in Render:
    - `FLASK_APP`: `app.py`
    - `FLASK_DEBUG`: `0`
    - `SECRET_KEY`: (Generate a secure random string)
-   - `DATABASE_URL`: `sqlite:///maths_exam.db`
+   - `DATABASE_URL`: `sqlite:///instance/maths_exam.db`
    - `OPENROUTER_API_KEY`: (Your OpenRouter API key)
    - `PORT`: `5000`
 

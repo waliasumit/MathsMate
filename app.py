@@ -89,24 +89,31 @@ def init_db():
                 os.makedirs(db_dir)
                 app.logger.info(f"Created database directory: {db_dir}")
             
-            # Drop all existing tables and recreate them
-            db.drop_all()
-            db.create_all()
-            app.logger.info("Database tables created successfully")
+            # Check if tables already exist
+            inspector = inspect(db.engine)
+            existing_tables = inspector.get_table_names()
+            
+            required_tables = ['test', 'question', 'test_questions']
+            missing_tables = [table for table in required_tables if table not in existing_tables]
+            
+            if missing_tables:
+                app.logger.info(f"Creating missing tables: {', '.join(missing_tables)}")
+                db.create_all()
+                app.logger.info("Database tables created successfully")
+            else:
+                app.logger.info("All required tables already exist")
             
             # Verify tables exist
-            inspector = inspect(db.engine)
             tables = inspector.get_table_names()
             app.logger.info(f"Available tables: {tables}")
             
-            required_tables = ['test', 'question', 'test_questions']
-            missing_tables = [table for table in required_tables if table not in tables]
-            
             if missing_tables:
-                app.logger.error(f"Missing required tables: {', '.join(missing_tables)}")
-                raise Exception(f"Database tables not created properly. Missing: {', '.join(missing_tables)}")
+                missing_tables = [table for table in required_tables if table not in tables]
+                if missing_tables:
+                    app.logger.error(f"Missing required tables: {', '.join(missing_tables)}")
+                    raise Exception(f"Database tables not created properly. Missing: {', '.join(missing_tables)}")
             
-            app.logger.info("All required tables created successfully")
+            app.logger.info("Database initialization completed successfully")
             
     except Exception as e:
         app.logger.error(f"Error initializing database: {str(e)}", exc_info=True)
