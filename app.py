@@ -355,12 +355,16 @@ def generate_questions():
                 - Ratios and proportions
                 - Percentages and interest
                 - Basic trigonometry
-                Format each question as a JSON object with these fields:
-                - question: The question text
-                - options: Array of 4 options [A, B, C, D]
-                - correct_answer: The correct option (A, B, C, or D)
-                - explanation: Explanation of the solution
-                Return ONLY the JSON array, with no additional text or explanation.'''
+                
+                IMPORTANT: Return ONLY a JSON array of questions. Each question must be a JSON object with these exact fields:
+                {
+                    "question": "The question text",
+                    "options": ["Option A", "Option B", "Option C", "Option D"],
+                    "correct_answer": "A",  // Must be A, B, C, or D
+                    "explanation": "Step-by-step explanation of the solution"
+                }
+                
+                Do not include any additional text, explanations, or formatting. Return ONLY the JSON array.'''
             }]
         }
 
@@ -382,10 +386,20 @@ def generate_questions():
                 app.logger.debug(f"Raw API response: {json.dumps(response_data, indent=2)}")
                 
                 # Check if response has the expected structure
-                if 'choices' not in response_data or not response_data['choices']:
+                if 'choices' not in response_data:
                     app.logger.error("Invalid API response structure: missing 'choices'")
-                    app.logger.error(f"Response keys: {response_data.keys()}")
+                    app.logger.error(f"Response keys: {list(response_data.keys())}")
                     app.logger.error(f"Full response: {json.dumps(response_data, indent=2)}")
+                    return get_fallback_questions()
+                
+                if not response_data['choices']:
+                    app.logger.error("Empty choices array in API response")
+                    app.logger.error(f"Full response: {json.dumps(response_data, indent=2)}")
+                    return get_fallback_questions()
+                
+                if 'message' not in response_data['choices'][0]:
+                    app.logger.error("Invalid choice structure: missing 'message'")
+                    app.logger.error(f"Choice structure: {json.dumps(response_data['choices'][0], indent=2)}")
                     return get_fallback_questions()
                 
                 # Extract the generated text from the response
@@ -411,7 +425,34 @@ def generate_questions():
                         else:
                             raise json.JSONDecodeError("No JSON array found in response", generated_text, 0)
                 
-                app.logger.info(f"Successfully generated {len(questions)} questions")
+                # Validate the questions structure
+                if not isinstance(questions, list):
+                    app.logger.error("Generated questions is not a list")
+                    app.logger.error(f"Questions type: {type(questions)}")
+                    return get_fallback_questions()
+                
+                if len(questions) != 10:
+                    app.logger.error(f"Expected 10 questions, got {len(questions)}")
+                    return get_fallback_questions()
+                
+                # Validate each question
+                for i, q in enumerate(questions):
+                    if not all(key in q for key in ['question', 'options', 'correct_answer', 'explanation']):
+                        app.logger.error(f"Question {i+1} missing required fields")
+                        app.logger.error(f"Question structure: {json.dumps(q, indent=2)}")
+                        return get_fallback_questions()
+                    
+                    if not isinstance(q['options'], list) or len(q['options']) != 4:
+                        app.logger.error(f"Question {i+1} has invalid options")
+                        app.logger.error(f"Options: {q['options']}")
+                        return get_fallback_questions()
+                    
+                    if q['correct_answer'] not in ['A', 'B', 'C', 'D']:
+                        app.logger.error(f"Question {i+1} has invalid correct_answer")
+                        app.logger.error(f"Correct answer: {q['correct_answer']}")
+                        return get_fallback_questions()
+                
+                app.logger.info(f"Successfully generated and validated {len(questions)} questions")
                 
                 # Save questions to database
                 for q in questions:
@@ -464,63 +505,61 @@ def get_fallback_questions():
         },
         {
             "id": 3,
-            "question": "If a number is increased by 25% and then decreased by 20%, what is the net percentage change?",
-            "options": ["No change", "5% increase", "5% decrease", "10% increase"],
-            "correct_answer": 1,
-            "explanation": "Let the number be 100\nAfter 25% increase: 100 + 25 = 125\nAfter 20% decrease: 125 - 25 = 100\nNet change = (100 - 100)/100 × 100 = 0%"
+            "question": "A bag contains 5 red marbles, 3 blue marbles, and 2 green marbles. What is the probability of drawing a blue marble?",
+            "options": ["3/10", "1/3", "3/8", "1/2"],
+            "correct_answer": 0,
+            "explanation": "Total marbles = 5 + 3 + 2 = 10\nBlue marbles = 3\nProbability = 3/10"
         },
         {
             "id": 4,
-            "question": "What is the probability of rolling two dice and getting a sum of 8?",
-            "options": ["5/36", "1/6", "1/9", "1/12"],
+            "question": "If 3 pens cost $12, how much would 5 pens cost?",
+            "options": ["$20", "$18", "$15", "$24"],
             "correct_answer": 0,
-            "explanation": "Total possible outcomes = 6 × 6 = 36\nFavorable outcomes for sum 8: (2,6), (3,5), (4,4), (5,3), (6,2) = 5\nProbability = 5/36"
+            "explanation": "Cost per pen = $12 ÷ 3 = $4\nCost for 5 pens = 5 × $4 = $20"
         },
         {
             "id": 5,
-            "question": "A right triangle has legs of 6 cm and 8 cm. What is the length of the hypotenuse?",
-            "options": ["10 cm", "12 cm", "14 cm", "16 cm"],
+            "question": "A shirt originally priced at $40 is on sale for 25% off. What is the sale price?",
+            "options": ["$30", "$35", "$32", "$28"],
             "correct_answer": 0,
-            "explanation": "Using Pythagorean theorem: a² + b² = c²\n6² + 8² = c²\n36 + 64 = c²\n100 = c²\nc = 10 cm"
+            "explanation": "Discount = 25% of $40 = $10\nSale price = $40 - $10 = $30"
         },
         {
             "id": 6,
-            "question": "If 3x + 2y = 12 and x - y = 2, what is the value of y?",
-            "options": ["1.2", "1.5", "1.8", "2.0"],
+            "question": "In a right triangle, if one angle is 30°, what is the measure of the other acute angle?",
+            "options": ["60°", "45°", "90°", "30°"],
             "correct_answer": 0,
-            "explanation": "From x - y = 2, we get x = y + 2\nSubstitute in first equation: 3(y + 2) + 2y = 12\n3y + 6 + 2y = 12\n5y = 6\ny = 1.2"
+            "explanation": "Sum of angles in a triangle = 180°\nRight angle = 90°\nOther acute angle = 180° - 90° - 30° = 60°"
         },
         {
             "id": 7,
-            "question": "What is the surface area of a cube with edge length 5 cm?",
-            "options": ["150 cm²", "125 cm²", "100 cm²", "75 cm²"],
+            "question": "Simplify: (2x² + 3x - 5) + (x² - 4x + 2)",
+            "options": ["3x² - x - 3", "3x² + 7x - 3", "x² - x - 3", "3x² - x + 3"],
             "correct_answer": 0,
-            "explanation": "Surface area of cube = 6 × (edge length)²\n= 6 × 5²\n= 6 × 25\n= 150 cm²"
+            "explanation": "Combine like terms:\n(2x² + x²) + (3x - 4x) + (-5 + 2)\n= 3x² - x - 3"
         },
         {
             "id": 8,
-            "question": "A shop offers a 20% discount on a $150 item, plus an additional 10% off the discounted price. What is the final price?",
-            "options": ["$108", "$105", "$102", "$99"],
+            "question": "What is the area of a triangle with base 8 cm and height 6 cm?",
+            "options": ["24 cm²", "48 cm²", "32 cm²", "16 cm²"],
             "correct_answer": 0,
-            "explanation": "First discount: $150 × 0.20 = $30\nPrice after first discount: $150 - $30 = $120\nSecond discount: $120 × 0.10 = $12\nFinal price: $120 - $12 = $108"
+            "explanation": "Area of triangle = (base × height) ÷ 2\n= (8 × 6) ÷ 2\n= 48 ÷ 2\n= 24 cm²"
         },
         {
             "id": 9,
-            "question": "What is the value of sin(30°) × cos(60°)?",
-            "options": ["0.25", "0.5", "0.75", "1.0"],
+            "question": "If a recipe calls for 2 cups of flour for 12 cookies, how many cups are needed for 30 cookies?",
+            "options": ["5 cups", "4 cups", "6 cups", "3 cups"],
             "correct_answer": 0,
-            "explanation": "sin(30°) = 0.5\ncos(60°) = 0.5\n0.5 × 0.5 = 0.25"
+            "explanation": "Flour per cookie = 2 cups ÷ 12 = 1/6 cup\nFor 30 cookies = 30 × 1/6 = 5 cups"
         },
         {
             "id": 10,
-            "question": "If the ratio of boys to girls in a class is 3:2 and there are 30 students, how many girls are there?",
-            "options": ["12", "15", "18", "20"],
+            "question": "A bank offers 5% simple interest per year. If you deposit $1000, how much interest will you earn in 3 years?",
+            "options": ["$150", "$157.63", "$165", "$175"],
             "correct_answer": 0,
-            "explanation": "Let the number of boys be 3x and girls be 2x\n3x + 2x = 30\n5x = 30\nx = 6\nNumber of girls = 2x = 12"
+            "explanation": "Simple Interest = Principal × Rate × Time\n= $1000 × 0.05 × 3\n= $150"
         }
     ]
-    
-    # Return all 10 questions
     return question_pool
 
 def load_env():
