@@ -40,25 +40,50 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory with the following content:
 ```
 FLASK_APP=app.py
-FLASK_ENV=development
-DEEPSEEK_API_KEY=your_deepseek_api_key
+FLASK_DEBUG=0
+SECRET_KEY=your-secret-key-here
+DATABASE_URL=sqlite:///maths_exam.db
+OPENROUTER_API_KEY=your-openrouter-api-key-here
+PORT=5000
 ```
 
 ## Running the Application
 
 1. Initialize the database:
 ```bash
-flask db init
-flask db migrate
-flask db upgrade
+python app.py
 ```
 
-2. Run the application:
+2. Start the Flask development server:
 ```bash
 flask run
 ```
 
-3. Open your web browser and navigate to `http://localhost:5000`
+## Deployment on Render
+
+1. Create a new Web Service on Render
+2. Connect your GitHub repository
+3. Configure the following settings:
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `gunicorn app:app`
+4. Add the following Environment Variables in Render:
+   - `FLASK_APP`: `app.py`
+   - `FLASK_DEBUG`: `0`
+   - `SECRET_KEY`: (Generate a secure random string)
+   - `DATABASE_URL`: `sqlite:///maths_exam.db`
+   - `OPENROUTER_API_KEY`: (Your OpenRouter API key)
+   - `PORT`: `5000`
+
+## Environment Variables
+
+The application requires the following environment variables:
+
+- `FLASK_APP`: The main application file (app.py)
+- `FLASK_DEBUG`: Set to 0 in production
+- `SECRET_KEY`: A secure random string for session security
+- `DATABASE_URL`: Database connection string
+- `OPENROUTER_API_KEY`: Your OpenRouter API key for question generation
+- `PORT`: Port number for the application (default: 5000)
 
 ## Usage
 
@@ -89,10 +114,10 @@ maths-test-app/
 ## Contributing
 
 1. Fork the repository
-2. Create a new branch for your feature
+2. Create a feature branch
 3. Commit your changes
 4. Push to the branch
-5. Create a new Pull Request
+5. Create a Pull Request
 
 ## License
 
