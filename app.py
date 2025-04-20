@@ -49,43 +49,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # Initialize SQLAlchemy
 db = SQLAlchemy(app)
 
-# Initialize database
-def init_db():
-    """Initialize the database"""
-    try:
-        with app.app_context():
-            # Create the database directory if it doesn't exist
-            db_dir = os.path.dirname(app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', ''))
-            if db_dir and not os.path.exists(db_dir):
-                os.makedirs(db_dir)
-                app.logger.info(f"Created database directory: {db_dir}")
-            
-            # Drop all existing tables and recreate them
-            db.drop_all()
-            db.create_all()
-            app.logger.info("Database tables created successfully")
-            
-            # Verify tables exist
-            inspector = inspect(db.engine)
-            tables = inspector.get_table_names()
-            app.logger.info(f"Available tables: {tables}")
-            
-            if 'test' not in tables:
-                app.logger.error("Test table not found after initialization")
-                raise Exception("Test table not created properly")
-            
-    except Exception as e:
-        app.logger.error(f"Error initializing database: {str(e)}", exc_info=True)
-        raise
-
-# Initialize database before defining routes
-init_db()
-
-# Add fromjson filter to Jinja2
-@app.template_filter('fromjson')
-def fromjson_filter(value):
-    return json.loads(value)
-
 # Database Models
 class TestQuestion(db.Model):
     __tablename__ = 'test_questions'
@@ -114,6 +77,48 @@ class Question(db.Model):
     explanation = db.Column(db.String(500), nullable=False)
     times_used = db.Column(db.Integer, default=0)  # Track how many times a question has been used
     last_used = db.Column(db.DateTime)  # Track when the question was last used
+
+# Initialize database
+def init_db():
+    """Initialize the database"""
+    try:
+        with app.app_context():
+            # Create the database directory if it doesn't exist
+            db_dir = os.path.dirname(app.config['SQLALCHEMY_DATABASE_URI'].replace('sqlite:///', ''))
+            if db_dir and not os.path.exists(db_dir):
+                os.makedirs(db_dir)
+                app.logger.info(f"Created database directory: {db_dir}")
+            
+            # Drop all existing tables and recreate them
+            db.drop_all()
+            db.create_all()
+            app.logger.info("Database tables created successfully")
+            
+            # Verify tables exist
+            inspector = inspect(db.engine)
+            tables = inspector.get_table_names()
+            app.logger.info(f"Available tables: {tables}")
+            
+            required_tables = ['test', 'question', 'test_questions']
+            missing_tables = [table for table in required_tables if table not in tables]
+            
+            if missing_tables:
+                app.logger.error(f"Missing required tables: {', '.join(missing_tables)}")
+                raise Exception(f"Database tables not created properly. Missing: {', '.join(missing_tables)}")
+            
+            app.logger.info("All required tables created successfully")
+            
+    except Exception as e:
+        app.logger.error(f"Error initializing database: {str(e)}", exc_info=True)
+        raise
+
+# Initialize database after models are defined
+init_db()
+
+# Add fromjson filter to Jinja2
+@app.template_filter('fromjson')
+def fromjson_filter(value):
+    return json.loads(value)
 
 # Error handler for 500 errors
 @app.errorhandler(500)
